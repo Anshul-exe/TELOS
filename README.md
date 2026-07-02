@@ -1,3 +1,7 @@
+> [!NOTE]
+> Expanding the older project [three-tier-lab](https://github.com/Anshul-exe/3Tier-End-to-End-Prod-Infra) with Jenkins, ArgoCD, microservice architecture, Terraform IaC, Observability and Monitoring.
+> Had to shift all of it's code here to not disturb that repo because it's linked in my Resume and don't want to showcase a project which is under development. I'll update the link to this project when this is completed, but it might take A LOT OF WORK!!!
+
 # Three-Tier End-to-End Production Infrastructure on AWS EKS
 
 > A production-grade, cloud-native application deployed on Amazon EKS with private control plane, ALB Ingress, horizontal pod autoscaling, and hardened network segmentation across public and private subnet tiers.
@@ -54,7 +58,9 @@ This project demonstrates a **full production-grade deployment** of a TODO appli
 ---
 
 ## Architecture
+
 ### Complete Infra
+
 <img width="1644" height="1744" alt="arch" src="https://github.com/user-attachments/assets/af50c595-ccec-491b-8308-789b092064ee" />
 
 ### High-Level Architecture
