@@ -1,0 +1,24 @@
+# Terraform working dirs and state
+**/.terraform/*
+.terraform.lock.hcl.bak
+
+# State files (remote state lives in S3; never commit local copies)
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Variable files may contain secrets — ignore all except example templates
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# CLI config / overrides
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and adjust as needed. terraform.tfvars is gitignored.
+# All values here have defaults in variables.tf; override only what you need.
+
+region      = "ap-south-1"
+project     = "telos"
+environment = "dev"
+
+# EKS cluster name (optional override; defaults to telos-cluster).
+# Shared by the vpc/eks/node-groups modules.
+cluster_name = "telos-cluster"
+
+# Your public IP as a /32 — REQUIRED to SSH the bastion. Find yours: curl ifconfig.me
+operator_ip_cidr = "203.0.113.4/32"
