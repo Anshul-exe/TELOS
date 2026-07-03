@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api
-  namespace: three-tier
+  namespace: telos
   labels:
     role: api
     env: demo
@@ -39,7 +39,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: api
-          image: 632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-backend:latest
+          image: 632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-backend:latest
           imagePullPolicy: Always
           resources:
             requests:

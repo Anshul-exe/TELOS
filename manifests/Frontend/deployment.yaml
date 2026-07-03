@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: three-tier
+  namespace: telos
   labels:
     role: frontend
     env: demo
@@ -25,7 +25,7 @@ spec:
         - name: ecr-registry-secret
       containers:
         - name: frontend
-          image: 632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-frontend:latest
+          image: 632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-frontend:latest
           imagePullPolicy: Always
           resources:
             requests:
@@ -36,6 +36,6 @@ spec:
               memory: 256Mi
           env:
             - name: REACT_APP_BACKEND_URL
-              value: "https://assignment.anshulfml.me/api/tasks"
+              value: "https://telos.anshulfml.me/api/tasks"
           ports:
             - containerPort: 3000
