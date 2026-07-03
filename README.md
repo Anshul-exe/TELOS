@@ -83,11 +83,11 @@ This project demonstrates a **full production-grade deployment** of a TODO appli
                              │  HTTP (forwarded)
               ┌──────────────▼───────────────────┐
               │         AWS EKS Cluster          │
-              │       three-tier-cluster         │
+              │       telos-cluster         │
               │         (Kubernetes v1.34)       │
               │                                  │
               │  ┌─────────────────────────────┐ │
-              │  │     Namespace: three-tier   │ │
+              │  │     Namespace: telos   │ │
               │  │                             │ │
               │  │  ┌──────────────────────┐   │ │
               │  │  │  Frontend (Nginx)    │   │ │
@@ -121,7 +121,7 @@ This project demonstrates a **full production-grade deployment** of a TODO appli
 ```
 User Browser
     │
-    │  DNS lookup: assignment.anshulfml.me
+    │  DNS lookup: telos.anshulfml.me
     ▼
 DNS Resolution (Cloudflare / Route 53)
     │
@@ -156,7 +156,7 @@ Persistent Storage (node-local)
 ### Kubernetes Workload Layout
 
 ```
-Cluster: three-tier-cluster (ap-south-1)
+Cluster: telos-cluster (ap-south-1)
 │
 ├── Node Group: ng-7f9c0e2a  [PUBLIC SUBNETS]
 │   ├── Instance type: t3.small
@@ -165,7 +165,7 @@ Cluster: three-tier-cluster (ap-south-1)
 │   └── Workloads:
 │       └── frontend (1 replica, no affinity constraint)
 │
-└── Node Group: db-api-ng  [PRIVATE SUBNETS]
+└── Node Group: telos-db-api-ng  [PRIVATE SUBNETS]
     ├── Instance type: t3.small
     ├── Scale: 2-4 nodes
     ├── Public IPs: No (NAT Gateway for egress)
@@ -204,7 +204,7 @@ kube-system namespace:
 | Container Orchestration | Amazon EKS      | Kubernetes v1.34                   |
 | Load Balancer           | AWS ALB         | Internet-facing, TLS-terminated    |
 | Container Registry      | Amazon ECR      | Private, IAM pull-only             |
-| TLS Certificates        | AWS ACM         | `assignment.anshulfml.me`          |
+| TLS Certificates        | AWS ACM         | `telos.anshulfml.me`          |
 | Networking              | AWS VPC         | `192.168.0.0/16`                   |
 | NAT Egress              | AWS NAT Gateway | Public subnet, private node egress |
 | Bastion                 | AWS EC2         | IMDSv2 enforced, SSM-enabled       |
@@ -247,7 +247,7 @@ VPC: vpc-0b70c2b1be52e7138  (192.168.0.0/16)
 └── PRIVATE SUBNETS (x3 AZs) ── tag: kubernetes.io/role/internal-elb
     ├── No direct internet access
     ├── Outbound via NAT Gateway (ECR pulls, OS updates)
-    └── db-api-ng nodes (API + MongoDB workloads)
+    └── telos-db-api-ng nodes (API + MongoDB workloads)
 ```
 
 **Security Groups:**
@@ -264,7 +264,7 @@ VPC: vpc-0b70c2b1be52e7138  (192.168.0.0/16)
 
 > **`BENCHMARK PATTERN`** — Node taints + tolerations + nodeAffinity is the production-standard approach for workload isolation in multi-tenant and multi-tier Kubernetes clusters.
 
-The `db-api-ng` node group is **tainted** to prevent general workloads from landing on database/API nodes:
+The `telos-db-api-ng` node group is **tainted** to prevent general workloads from landing on database/API nodes:
 
 ```yaml
 # Applied at node group level
@@ -307,11 +307,11 @@ Operator machine (public IP)
         │
         │  SSH (port 22, SG-restricted to operator IP)
         ▼
-Bastion Host: three-tier-bastion
+Bastion Host: telos-bastion
 ├── Public IP:  15.206.68.60
 ├── Private IP: 192.168.78.240
 ├── IMDSv2 enforced (HttpTokens: required)
-├── Instance profile: three-tier-bastion-ssm-profile
+├── Instance profile: telos-bastion-ssm-profile
 └── SSM Session Manager available as secondary access
         │
         │  kubectl (private VPC endpoint)
@@ -417,26 +417,26 @@ Developer Workstation
         ▼
 Local Docker Build
         │
-        │  2a. docker build -t three-tier-lab-backend ./backend
-        │  2b. docker build -t three-tier-lab-frontend ./frontend
+        │  2a. docker build -t telos-backend ./backend
+        │  2b. docker build -t telos-frontend ./frontend
         │       (multi-stage: Node build → Nginx serve)
         ▼
 Amazon ECR (Private Registry)
         │
         │  3. aws ecr get-login-password | docker login
-        │     docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-*
+        │     docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-*
         ▼
 Bastion Host (inside VPC)
         │
         │  4. scp manifests/ to bastion
-        │     kubectl apply -f manifests/ -n three-tier
+        │     kubectl apply -f manifests/ -n telos
         ▼
-EKS (three-tier-cluster)
+EKS (telos-cluster)
         │
         │  5. Nodes pull images from ECR via IAM
         │     AWS LB Controller provisions/updates ALB
         ▼
-Live at https://assignment.anshulfml.me
+Live at https://telos.anshulfml.me
 ```
 
 ### Dockerfile Strategy
@@ -481,8 +481,8 @@ The Nginx config in the final image handles:
 All inter-service communication uses Kubernetes DNS — no hardcoded IPs.
 
 ```
-frontend  →  api service      →  api.three-tier.svc.cluster.local:3500
-api       →  mongodb service  →  mongodb-svc.three-tier.svc.cluster.local:27017
+frontend  →  api service      →  api.telos.svc.cluster.local:3500
+api       →  mongodb service  →  mongodb-svc.telos.svc.cluster.local:27017
 ```
 
 ### Environment Configuration
@@ -498,18 +498,18 @@ MONGO_PASSWORD   → from secret: mongo-sec
 **Frontend:**
 
 ```
-REACT_APP_BACKEND_URL=https://assignment.anshulfml.me/api/tasks
+REACT_APP_BACKEND_URL=https://telos.anshulfml.me/api/tasks
 ```
 
 ### Secrets
 
 ```yaml
-# mongo-sec (Kubernetes Secret, three-tier namespace)
+# mongo-sec (Kubernetes Secret, telos namespace)
 apiVersion: v1
 kind: Secret
 metadata:
   name: mongo-sec
-  namespace: three-tier
+  namespace: telos
 type: Opaque
 data:
   username: <base64>
@@ -558,7 +558,7 @@ mongo-volume-claim  (PVC, 1Gi, ReadWriteOnce)
 mongo-pv  (PV, hostPath: /data/db, Retain)
         │
         ▼
-Node-local disk on db-api-ng node
+Node-local disk on telos-db-api-ng node
 ```
 
 | Property           | Value                 |
@@ -632,7 +632,7 @@ The following patterns implemented in this project are directly relevant to my *
 
 ### `PRIVATE SUBNET ISOLATION FOR STATEFUL WORKLOADS`
 
-**What:** API and MongoDB pods run exclusively on the `db-api-ng` node group, which lives in private subnets with no public IP assignment. Outbound internet access flows through a NAT Gateway.
+**What:** API and MongoDB pods run exclusively on the `telos-db-api-ng` node group, which lives in private subnets with no public IP assignment. Outbound internet access flows through a NAT Gateway.
 **Why it matters:** Stateful services (databases, APIs with DB access) should never have a path to direct internet exposure. This is VPC design as a security control.
 
 ---
@@ -665,16 +665,16 @@ aws ecr get-login-password --region ap-south-1 | \
 
 ```bash
 # Backend
-docker build -t three-tier-lab-backend ./backend
-docker tag three-tier-lab-backend:latest \
-  632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-backend:latest
-docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-backend:latest
+docker build -t telos-backend ./backend
+docker tag telos-backend:latest \
+  632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-backend:latest
+docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-backend:latest
 
 # Frontend
-docker build -t three-tier-lab-frontend ./frontend
-docker tag three-tier-lab-frontend:latest \
-  632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-frontend:latest
-docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/three-tier-lab-frontend:latest
+docker build -t telos-frontend ./frontend
+docker tag telos-frontend:latest \
+  632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-frontend:latest
+docker push 632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-frontend:latest
 ```
 
 ### 3. Deploy to EKS (via Bastion)
@@ -688,25 +688,25 @@ scp -i ~/.keys/project-bastion-key.pem -r manifests/ \
 ssh -i ~/.keys/project-bastion-key.pem ec2-user@15.206.68.60
 
 # Apply all manifests
-kubectl apply -f /home/ec2-user/manifests/ -n three-tier
+kubectl apply -f /home/ec2-user/manifests/ -n telos
 
 # Verify deployments
-kubectl get pods -n three-tier
-kubectl get ingress -n three-tier
-kubectl get hpa -n three-tier
+kubectl get pods -n telos
+kubectl get ingress -n telos
+kubectl get hpa -n telos
 ```
 
 ### 4. Verify the Stack
 
 ```bash
-# Check all resources in the three-tier namespace
-kubectl get all -n three-tier
+# Check all resources in the telos namespace
+kubectl get all -n telos
 
 # Watch HPA scaling behavior
-kubectl get hpa -n three-tier --watch
+kubectl get hpa -n telos --watch
 
 # Describe ALB Ingress
-kubectl describe ingress mainlb -n three-tier
+kubectl describe ingress mainlb -n telos
 ```
 
 ---
