@@ -23,7 +23,7 @@ locals {
 # on 443 from inside the VPC (bastion), matching baseArch.md's SG setup.
 resource "aws_security_group" "cluster" {
   name_prefix = "${var.cluster_name}-cluster-"
-  description = "EKS control plane SG — API access from within the VPC (bastion)."
+  description = "EKS control plane SG - API access from within the VPC (bastion)."
   vpc_id      = var.vpc_id
 
   tags = merge(local.base_tags, { Name = "${var.cluster_name}-cluster-sg" })

@@ -26,7 +26,7 @@ data "aws_ssm_parameter" "al2023" {
 
 resource "aws_security_group" "bastion" {
   name_prefix = "${var.name}-sg-"
-  description = "Bastion SG — SSH from the operator IP only."
+  description = "Bastion SG - SSH from the operator IP only."
   vpc_id      = var.vpc_id
 
   tags = merge(local.base_tags, { Name = "${var.name}-sg" })
