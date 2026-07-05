@@ -52,6 +52,11 @@ module "iam" {
 
   name_prefix = var.project
 
+  # Scope the bastion's eks:DescribeCluster permission to this cluster's ARN.
+  # Plain var (not module.eks output) so the ARN is known at plan time and adds
+  # no dependency cycle.
+  cluster_name = var.cluster_name
+
   # IRSA: register the OIDC provider using the cluster's issuer URL. The URL is
   # known-only-after-apply on first run; the static toggle keeps `count` valid.
   enable_oidc_provider    = true
@@ -97,4 +102,26 @@ module "bastion" {
   subnet_id             = module.vpc.public_subnet_ids[0]
   instance_profile_name = module.iam.bastion_instance_profile_name
   operator_ip_cidr      = var.operator_ip_cidr
+
+  # user_data bootstraps kubectl + kubeconfig at first boot.
+  region       = var.region
+  cluster_name = var.cluster_name
+
+  # Create the bastion only AFTER the cluster is ACTIVE (the aws_eks_cluster
+  # create returns once ACTIVE), so first-boot update-kubeconfig can succeed.
+  # The user_data script also waits for ACTIVE as defense-in-depth.
+  depends_on = [module.eks]
+}
+
+# Grant the bastion role kubectl access via an EKS Access Entry (not aws-auth),
+# so kubectl runs on the bastion's own instance-profile identity — no human IAM
+# user credentials ever land on the host. Read-only (AmazonEKSAdminViewPolicy)
+# by default for validation; flip access_policy_arn to AmazonEKSClusterAdminPolicy
+# when deploying manifests from the bastion. Depends on eks (cluster) + iam
+# (bastion role); no cycle since the bastion role is independent of the cluster.
+module "eks_access" {
+  source = "../../modules/eks-access"
+
+  cluster_name  = module.eks.cluster_name
+  principal_arn = module.iam.bastion_role_arn
 }
