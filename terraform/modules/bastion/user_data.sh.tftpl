@@ -27,9 +27,9 @@ if ! command -v kubectl >/dev/null 2>&1; then
     aarch64) ARCH=arm64 ;;
     *)       echo "[bootstrap] unexpected arch $(uname -m); defaulting to amd64"; ARCH=amd64 ;;
   esac
-  KVER="$(curl -fsSL https://dl.k8s.io/release/stable-$${K8S_MINOR}.txt)"
+  KVER="$(curl --http1.1 -fsSL https://dl.k8s.io/release/stable-$${K8S_MINOR}.txt)"
   echo "[bootstrap] installing kubectl $${KVER} ($${ARCH})"
-  if curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$${KVER}/bin/linux/$${ARCH}/kubectl"; then
+  if curl --http1.1 -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$${KVER}/bin/linux/$${ARCH}/kubectl"; then
     install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
     rm -f /tmp/kubectl
   else

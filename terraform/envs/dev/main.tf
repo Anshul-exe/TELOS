@@ -124,6 +124,11 @@ module "eks_access" {
 
   cluster_name  = module.eks.cluster_name
   principal_arn = module.iam.bastion_role_arn
+
+  # Write access: the bastion now deploys Helm charts (e.g. the LB controller
+  # CRDs), which require cluster-scoped create permissions. ClusterAdmin grants
+  # full cluster-admin; AdminViewPolicy (read-only) is insufficient for applies.
+  access_policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
 
 # AWS Load Balancer Controller — IRSA IAM role + AWS-published policy only.
