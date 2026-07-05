@@ -10,6 +10,12 @@ variable "cluster_oidc_issuer_url" {
   default     = ""
 }
 
+variable "cluster_name" {
+  description = "EKS cluster name the bastion role may eks:DescribeCluster (scopes the inline policy to that cluster's ARN). Empty string disables the bastion EKS policy."
+  type        = string
+  default     = ""
+}
+
 variable "enable_oidc_provider" {
   description = "Whether to create the IAM OIDC provider for IRSA. Kept as a STATIC toggle (not derived from cluster_oidc_issuer_url) so `count` is known at plan time even when the issuer URL is only known after the cluster is created. Set true once the eks module is wired in."
   type        = bool

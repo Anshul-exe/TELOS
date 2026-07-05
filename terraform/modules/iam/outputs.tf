@@ -21,8 +21,12 @@ output "bastion_role_arn" {
 output "bastion_instance_profile_name" {
   description = "Name of the bastion instance profile (attach to the bastion EC2 instance)."
   value       = aws_iam_instance_profile.bastion.name
-  # SSM policy attached before the profile is consumed by the bastion instance.
-  depends_on = [aws_iam_role_policy_attachment.bastion_ssm]
+  # SSM + EKS-describe policies attached before the profile is consumed by the
+  # bastion instance, so its user_data can call eks:DescribeCluster at first boot.
+  depends_on = [
+    aws_iam_role_policy_attachment.bastion_ssm,
+    aws_iam_role_policy.bastion_eks_describe,
+  ]
 }
 
 output "bastion_instance_profile_arn" {

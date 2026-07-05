@@ -22,6 +22,11 @@ terraform {
 # Partition-aware managed-policy ARNs (aws / aws-cn / aws-us-gov).
 data "aws_partition" "current" {}
 
+# Used to build the fully-qualified telos-cluster ARN for the scoped bastion
+# eks:DescribeCluster permission below.
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
 locals {
   managed_policy_prefix = "arn:${data.aws_partition.current.partition}:iam::aws:policy"
 
@@ -121,6 +126,40 @@ resource "aws_iam_instance_profile" "bastion" {
   role = aws_iam_role.bastion.name
 
   tags = merge(local.base_tags, { Name = "${var.name_prefix}-bastion-ssm-profile" })
+}
+
+# Minimal EKS control-plane permissions for the bastion:
+#   * eks:DescribeCluster — required by `aws eks update-kubeconfig` and scoped to
+#     the telos-cluster ARN specifically (not eks:* / not "*").
+#   * eks:ListClusters    — convenience for `aws eks list-clusters`. This action
+#     does NOT support resource-level scoping (it enumerates all clusters in the
+#     region), so AWS requires Resource="*" for it — a specific ARN would make
+#     the statement match nothing. Kept in its own statement for that reason.
+# kubectl authorization itself is granted by the EKS access entry (modules/
+# eks-access), not by IAM, so no eks:AccessKubernetesApi is needed here.
+resource "aws_iam_role_policy" "bastion_eks_describe" {
+  count = var.cluster_name != "" ? 1 : 0
+
+  name = "${var.name_prefix}-bastion-eks-describe"
+  role = aws_iam_role.bastion.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "DescribeTelosClusterOnly"
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
+        Resource = "arn:${data.aws_partition.current.partition}:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+      },
+      {
+        Sid      = "ListClustersRegionWide"
+        Effect   = "Allow"
+        Action   = ["eks:ListClusters"]
+        Resource = "*"
+      },
+    ]
+  })
 }
 
 # ---------------------------------------------------------------------------
