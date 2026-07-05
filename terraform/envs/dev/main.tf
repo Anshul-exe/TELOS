@@ -125,3 +125,14 @@ module "eks_access" {
   cluster_name  = module.eks.cluster_name
   principal_arn = module.iam.bastion_role_arn
 }
+
+# AWS Load Balancer Controller — IRSA IAM role + AWS-published policy only.
+# The Helm chart + service account are installed with `helm` from the bastion
+# (the cluster endpoint is private-only, so the Helm/kubernetes providers can't
+# reach the API from here). Purely additive; consumes existing iam OIDC outputs.
+module "alb_controller" {
+  source = "../../modules/alb-controller"
+
+  oidc_provider_arn = module.iam.oidc_provider_arn
+  oidc_provider_url = module.iam.oidc_provider_url
+}

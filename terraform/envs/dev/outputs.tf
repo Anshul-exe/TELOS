@@ -46,6 +46,13 @@ output "ecr_repository_urls" {
   value       = module.ecr.repository_urls
 }
 
+# ALB Controller (IRSA) — annotate the aws-load-balancer-controller service
+# account with this ARN during the helm install on the bastion.
+output "alb_controller_role_arn" {
+  description = "IRSA role ARN for the AWS Load Balancer Controller service account."
+  value       = module.alb_controller.role_arn
+}
+
 # Bastion
 output "bastion_public_ip" {
   description = "Public IP of the bastion (SSH from operator_ip_cidr)."
