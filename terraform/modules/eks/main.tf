@@ -62,6 +62,16 @@ resource "aws_eks_cluster" "this" {
     public_access_cidrs     = var.endpoint_public_access ? var.public_access_cidrs : null
   }
 
+  # Enable EKS Access Entries (the modern replacement for the aws-auth
+  # ConfigMap) so principals like the bastion role can be granted kubectl
+  # access declaratively (see modules/eks-access). API_AND_CONFIG_MAP keeps the
+  # legacy ConfigMap as a fallback; the creator principal still gets admin via
+  # bootstrap_cluster_creator_admin_permissions.
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   enabled_cluster_log_types = var.enabled_cluster_log_types
 
   tags = merge(local.base_tags, { Name = var.cluster_name })
