@@ -35,6 +35,23 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
+variable "region" {
+  description = "AWS region, passed into user_data for aws eks update-kubeconfig."
+  type        = string
+}
+
+variable "cluster_name" {
+  description = "EKS cluster name to wire kubeconfig to at first boot. Empty string skips all kubectl/kubeconfig bootstrap in user_data."
+  type        = string
+  default     = ""
+}
+
+variable "kubectl_minor_version" {
+  description = "Kubernetes minor version channel for kubectl (resolves the latest patch via https://dl.k8s.io/release/stable-<minor>.txt). Should match the cluster version."
+  type        = string
+  default     = "1.34"
+}
+
 variable "key_name" {
   description = "Optional EC2 key pair name for SSH. Leave null to rely on SSM Session Manager only."
   type        = string

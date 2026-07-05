@@ -62,12 +62,24 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids      = [aws_security_group.bastion.id]
   associate_public_ip_address = true
 
-  # Enforce IMDSv2.
+  # Enforce IMDSv2. hop_limit stays 1: user_data and the kubeconfig exec hook
+  # (aws eks get-token) run directly on the host, so they reach IMDS at 1 hop.
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
   }
+
+  # Bootstrap kubectl + kubeconfig at first boot. Re-runs on a fresh instance
+  # after every destroy/apply; user_data_replace_on_change ensures edits to the
+  # script actually take effect (they replace the instance rather than silently
+  # no-op'ing on the already-booted host).
+  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
+    region       = var.region
+    cluster_name = var.cluster_name
+    k8s_minor    = var.kubectl_minor_version
+  })
+  user_data_replace_on_change = true
 
   tags = merge(local.base_tags, { Name = var.name })
 }

@@ -1,0 +1,78 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# Bastion bootstrap (runs once at first boot, as root, via cloud-init).
+# 1. Installs kubectl (arch-aware, pinned to the stable-${k8s_minor} channel).
+# 2. Waits for the EKS cluster to reach ACTIVE (guards the bastion/cluster
+#    create race even though Terraform also orders this after the cluster).
+# 3. Writes a shared kubeconfig usable by ec2-user and ssm-user.
+# Logs to /var/log/bastion-bootstrap.log for post-boot inspection.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+exec > >(tee /var/log/bastion-bootstrap.log) 2>&1
+echo "[bootstrap] start $(date -u)"
+
+REGION="${region}"
+CLUSTER_NAME="${cluster_name}"
+K8S_MINOR="${k8s_minor}"
+
+if [ -z "$${CLUSTER_NAME}" ]; then
+  echo "[bootstrap] cluster_name empty; skipping kubectl/kubeconfig bootstrap"
+  exit 0
+fi
+
+# --- 1. Install kubectl (arch-aware, stable-<minor> release channel) ---------
+if ! command -v kubectl >/dev/null 2>&1; then
+  case "$(uname -m)" in
+    x86_64)  ARCH=amd64 ;;
+    aarch64) ARCH=arm64 ;;
+    *)       echo "[bootstrap] unexpected arch $(uname -m); defaulting to amd64"; ARCH=amd64 ;;
+  esac
+  KVER="$(curl -fsSL https://dl.k8s.io/release/stable-$${K8S_MINOR}.txt)"
+  echo "[bootstrap] installing kubectl $${KVER} ($${ARCH})"
+  if curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$${KVER}/bin/linux/$${ARCH}/kubectl"; then
+    install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+    rm -f /tmp/kubectl
+  else
+    echo "[bootstrap] WARNING: kubectl download failed"
+  fi
+fi
+
+# --- AWS CLI is preinstalled on AL2023; install only if somehow missing -------
+command -v aws >/dev/null 2>&1 || dnf install -y awscli || true
+
+# --- 2. Wait for the cluster to be ACTIVE (create-race defense) ---------------
+echo "[bootstrap] waiting for cluster $${CLUSTER_NAME} to be ACTIVE"
+for i in $(seq 1 60); do
+  STATUS="$(aws eks describe-cluster --region "$${REGION}" --name "$${CLUSTER_NAME}" \
+            --query 'cluster.status' --output text 2>/dev/null || echo PENDING)"
+  if [ "$${STATUS}" = "ACTIVE" ]; then
+    echo "[bootstrap] cluster ACTIVE (attempt $${i})"
+    break
+  fi
+  echo "[bootstrap] attempt $${i}/60: status=$${STATUS}; sleeping 15s"
+  sleep 15
+done
+
+# --- 3. Write a shared kubeconfig for ec2-user and ssm-user -------------------
+# The EKS kubeconfig holds only the endpoint + CA cert + an `aws eks get-token`
+# exec hook (no static secret), so a 0644 shared copy is safe and lets any login
+# user (ec2-user, or the SSM-created ssm-user) use kubectl via the instance role.
+KUBECONFIG_PATH=/etc/kubernetes/kubeconfig
+mkdir -p /etc/kubernetes
+if aws eks update-kubeconfig --region "$${REGION}" --name "$${CLUSTER_NAME}" \
+     --kubeconfig "$${KUBECONFIG_PATH}"; then
+  chmod 0644 "$${KUBECONFIG_PATH}"
+  echo "[bootstrap] kubeconfig written to $${KUBECONFIG_PATH}"
+
+  # Point every interactive shell at the shared kubeconfig.
+  printf 'export KUBECONFIG=%s\n' "$${KUBECONFIG_PATH}" > /etc/profile.d/kubeconfig.sh
+  chmod 0644 /etc/profile.d/kubeconfig.sh
+
+  # Also place it at the conventional path in ec2-user's home.
+  install -d -o ec2-user -g ec2-user -m 0700 /home/ec2-user/.kube
+  install -o ec2-user -g ec2-user -m 0600 "$${KUBECONFIG_PATH}" /home/ec2-user/.kube/config
+else
+  echo "[bootstrap] ERROR: update-kubeconfig failed; cluster unreachable at boot"
+fi
+
+echo "[bootstrap] done $(date -u)"
