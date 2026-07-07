@@ -121,6 +121,16 @@ resource "aws_iam_role_policy_attachment" "bastion_ssm" {
   policy_arn = "${local.managed_policy_prefix}/AmazonSSMManagedInstanceCore"
 }
 
+# Account-wide read-only (Describe/Get/List across all services, no write).
+# Lets `terraform apply` run from the bastion refresh existing state before
+# targeting module.alb_controller.helm_release.this — the Helm release itself
+# only calls the Kubernetes API and makes no AWS write calls, so read-only AWS
+# access is sufficient for that plan/refresh.
+resource "aws_iam_role_policy_attachment" "bastion_readonly" {
+  role       = aws_iam_role.bastion.name
+  policy_arn = "${local.managed_policy_prefix}/ReadOnlyAccess"
+}
+
 resource "aws_iam_instance_profile" "bastion" {
   name = "${var.name_prefix}-bastion-ssm-profile"
   role = aws_iam_role.bastion.name
