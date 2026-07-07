@@ -22,6 +22,18 @@ variable "enable_oidc_provider" {
   default     = false
 }
 
+variable "tf_state_bucket_arn" {
+  description = "ARN of the S3 bucket holding Terraform remote state. Grants the bastion role GetObject/PutObject (on <arn>/*) and ListBucket (on <arn>). Empty string disables the backend policy."
+  type        = string
+  default     = "arn:aws:s3:::telos-tfstate-23c1b86e"
+}
+
+variable "tf_lock_table_arn" {
+  description = "ARN of the DynamoDB table used for Terraform state locking. Grants the bastion role GetItem/PutItem/DeleteItem/DescribeTable. Empty string disables the backend policy."
+  type        = string
+  default     = "arn:aws:dynamodb:ap-south-1:632377784699:table/telos-tf-locks"
+}
+
 variable "tags" {
   description = "Additional tags merged onto all resources in this module."
   type        = map(string)

@@ -131,13 +131,27 @@ module "eks_access" {
   access_policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
 
-# AWS Load Balancer Controller — IRSA IAM role + AWS-published policy only.
-# The Helm chart + service account are installed with `helm` from the bastion
-# (the cluster endpoint is private-only, so the Helm/kubernetes providers can't
-# reach the API from here). Purely additive; consumes existing iam OIDC outputs.
+# AWS Load Balancer Controller — IRSA IAM role + AWS-published policy AND the
+# Helm chart install. The chart's Helm/kubernetes providers use exec-based auth
+# (aws eks get-token) against the PRIVATE cluster endpoint, so this stack must
+# be applied from the bastion (inside the VPC). See the module header.
 module "alb_controller" {
   source = "../../modules/alb-controller"
 
   oidc_provider_arn = module.iam.oidc_provider_arn
   oidc_provider_url = module.iam.oidc_provider_url
+
+  # Helm install inputs. Passing the eks cluster_name/endpoint/ca_data already
+  # makes alb_controller implicitly depend on module.eks — no depends_on needed
+  # (and a module with its own provider blocks cannot use depends_on anyway).
+  region           = var.region
+  cluster_name     = module.eks.cluster_name
+  cluster_endpoint = module.eks.cluster_endpoint
+  cluster_ca_data  = module.eks.cluster_ca_data
+  vpc_id           = module.vpc.vpc_id
+
+  # Order the Helm release AFTER the bastion's ClusterAdmin access entry: the
+  # module consumes this value through a terraform_data gate so the dependency
+  # is a real graph edge (again, without a module-level depends_on).
+  eks_access_policy_arn = module.eks_access.access_policy_arn
 }

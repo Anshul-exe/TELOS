@@ -52,6 +52,12 @@ variable "kubectl_minor_version" {
   default     = "1.34"
 }
 
+variable "terraform_version" {
+  description = "Exact Terraform version installed on the bastion (pinned via the releases.hashicorp.com zip). Keep in sync with the version this stack is applied with; the required_version constraint is only a floor (>= 1.5.0)."
+  type        = string
+  default     = "1.15.6"
+}
+
 variable "key_name" {
   description = "Optional EC2 key pair name for SSH. Leave null to rely on SSM Session Manager only."
   type        = string

@@ -162,6 +162,46 @@ resource "aws_iam_role_policy" "bastion_eks_describe" {
   })
 }
 
+# Terraform remote-backend access for the bastion: the bastion now runs
+# `terraform apply` itself (it is the only host that can reach the private EKS
+# API for the Helm/kubernetes providers), so its role needs to read/write the
+# S3 state object and acquire/release the DynamoDB state lock.
+#   * S3: GetObject/PutObject on the state KEY (bucket/*), ListBucket on the
+#     BUCKET itself (ListBucket is a bucket-level action — its resource is the
+#     bucket ARN, not the object ARN — so it lives in its own statement).
+#   * DynamoDB: the four item/table actions the S3 backend uses for locking.
+# Scoped to the specific state bucket + lock table ARNs (never "*").
+resource "aws_iam_role_policy" "bastion_tf_backend" {
+  count = var.tf_state_bucket_arn != "" && var.tf_lock_table_arn != "" ? 1 : 0
+
+  name = "${var.name_prefix}-bastion-tf-backend"
+  role = aws_iam_role.bastion.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "StateObjectReadWrite"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = "${var.tf_state_bucket_arn}/*"
+      },
+      {
+        Sid      = "StateBucketList"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = var.tf_state_bucket_arn
+      },
+      {
+        Sid      = "StateLockTable"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:DescribeTable"]
+        Resource = var.tf_lock_table_arn
+      },
+    ]
+  })
+}
+
 # ---------------------------------------------------------------------------
 # EKS OIDC provider — foundation for IRSA (IAM Roles for Service Accounts).
 # Created only once the cluster's OIDC issuer URL is known (passed from the

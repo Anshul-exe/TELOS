@@ -75,9 +75,10 @@ resource "aws_instance" "bastion" {
   # script actually take effect (they replace the instance rather than silently
   # no-op'ing on the already-booted host).
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    region       = var.region
-    cluster_name = var.cluster_name
-    k8s_minor    = var.kubectl_minor_version
+    region            = var.region
+    cluster_name      = var.cluster_name
+    k8s_minor         = var.kubectl_minor_version
+    terraform_version = var.terraform_version
   })
   user_data_replace_on_change = true
 

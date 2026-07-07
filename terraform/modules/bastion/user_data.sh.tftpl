@@ -40,6 +40,39 @@ fi
 # --- AWS CLI is preinstalled on AL2023; install only if somehow missing -------
 command -v aws >/dev/null 2>&1 || dnf install -y awscli || true
 
+# --- git (AL2023: dnf) --------------------------------------------------------
+# Needed to clone this repo on the bastion so `terraform apply` can run here.
+if ! command -v git >/dev/null 2>&1; then
+  echo "[bootstrap] installing git"
+  dnf install -y git || echo "[bootstrap] WARNING: git install failed"
+fi
+
+# --- terraform (pinned to ${terraform_version}) -------------------------------
+# The bastion runs `terraform apply` for the parts that need the private EKS API
+# (Helm/kubernetes providers), so it must have the SAME terraform version this
+# stack is built with. Pinned via the official release zip (deterministic — the
+# hashicorp yum repo only tracks "latest" for a given release line). unzip is
+# pulled in first since AL2023 minimal images may lack it.
+TF_VERSION="${terraform_version}"
+if [ "$(terraform version -json 2>/dev/null | grep -o '\"terraform_version\":\"[^\"]*\"' | cut -d'\"' -f4)" != "$${TF_VERSION}" ]; then
+  case "$(uname -m)" in
+    x86_64)  TF_ARCH=amd64 ;;
+    aarch64) TF_ARCH=arm64 ;;
+    *)       echo "[bootstrap] unexpected arch $(uname -m); defaulting to amd64"; TF_ARCH=amd64 ;;
+  esac
+  command -v unzip >/dev/null 2>&1 || dnf install -y unzip || true
+  TF_ZIP="terraform_$${TF_VERSION}_linux_$${TF_ARCH}.zip"
+  TF_URL="https://releases.hashicorp.com/terraform/$${TF_VERSION}/$${TF_ZIP}"
+  echo "[bootstrap] installing terraform $${TF_VERSION} ($${TF_ARCH})"
+  if curl --http1.1 -fsSLo "/tmp/$${TF_ZIP}" "$${TF_URL}" \
+     && unzip -o "/tmp/$${TF_ZIP}" -d /tmp >/dev/null; then
+    install -m 0755 /tmp/terraform /usr/local/bin/terraform
+    rm -f "/tmp/$${TF_ZIP}" /tmp/terraform
+  else
+    echo "[bootstrap] WARNING: terraform $${TF_VERSION} install failed"
+  fi
+fi
+
 # --- 2. Wait for the cluster to be ACTIVE (create-race defense) ---------------
 echo "[bootstrap] waiting for cluster $${CLUSTER_NAME} to be ACTIVE"
 for i in $(seq 1 60); do
