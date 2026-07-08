@@ -14,7 +14,7 @@ metadata:
   namespace: telos
 data:
   PORT: "3500"
-  SQS_QUEUE_URL: "<PLACEHOLDER_SQS_QUEUE_URL>"
+  SQS_QUEUE_URL: "${SQS_QUEUE_URL}"
 ---
 apiVersion: v1
 kind: Secret
@@ -24,7 +24,7 @@ metadata:
 type: Opaque
 stringData:
   # Connection string specifying 'tasks' DB. Real value injected before apply.
-  MONGO_CONN_STR: "mongodb://mongo:27017/tasks"
+  MONGO_CONN_STR: "mongodb://mongodb-svc:27017/tasks"
 ---
 apiVersion: apps/v1
 kind: Deployment

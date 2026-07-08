@@ -14,7 +14,7 @@ metadata:
   namespace: telos
 data:
   PORT: "4500"
-  SQS_QUEUE_URL: "<PLACEHOLDER_SQS_QUEUE_URL>"
+  SQS_QUEUE_URL: "${SQS_QUEUE_URL}"
   MONGO_DB_NAME: "notifications"
 ---
 apiVersion: v1
@@ -25,7 +25,7 @@ metadata:
 type: Opaque
 stringData:
   # Real connection string injected before apply.
-  MONGO_CONN_STR: "mongodb://mongo:27017"
+  MONGO_CONN_STR: "mongodb://mongodb-svc:27017"
 ---
 apiVersion: apps/v1
 kind: Deployment
