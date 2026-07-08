@@ -44,7 +44,7 @@ spec:
       serviceAccountName: task-service
       containers:
         - name: task-service
-          image: "telos-task-service:latest"
+          image: "632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-task-service:latest"
           ports:
             - containerPort: 3500
           resources:

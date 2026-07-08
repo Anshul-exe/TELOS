@@ -45,7 +45,7 @@ spec:
       serviceAccountName: notification-service
       containers:
         - name: notification-service
-          image: "telos-notification-service:latest"
+          image: "632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-notification-service:latest"
           ports:
             - containerPort: 4500
           resources:

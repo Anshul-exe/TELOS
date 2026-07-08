@@ -41,7 +41,7 @@ spec:
       serviceAccountName: auth-service
       containers:
         - name: auth-service
-          image: "telos-auth-service:latest"
+          image: "632377784699.dkr.ecr.ap-south-1.amazonaws.com/telos-auth-service:latest"
           ports:
             - containerPort: 4000
           resources:
