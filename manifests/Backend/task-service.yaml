@@ -5,7 +5,7 @@ metadata:
   namespace: telos
   annotations:
     # Real value is injected via CI/CD before apply
-    eks.amazonaws.com/role-arn: "<PLACEHOLDER - see terraform output task_service_irsa_role_arn>"
+    eks.amazonaws.com/role-arn: "${TASK_SERVICE_IRSA_ARN}"
 ---
 apiVersion: v1
 kind: ConfigMap
