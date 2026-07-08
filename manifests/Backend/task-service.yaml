@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: task-service
+  namespace: telos
+  annotations:
+    # Real value is injected via CI/CD before apply
+    eks.amazonaws.com/role-arn: "<PLACEHOLDER - see terraform output task_service_irsa_role_arn>"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: task-service-config
+  namespace: telos
+data:
+  PORT: "3500"
+  SQS_QUEUE_URL: "<PLACEHOLDER_SQS_QUEUE_URL>"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: task-service-secret
+  namespace: telos
+type: Opaque
+stringData:
+  # Connection string specifying 'tasks' DB. Real value injected before apply.
+  MONGO_CONN_STR: "mongodb://mongo:27017/tasks"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: telos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-service
+  template:
+    metadata:
+      labels:
+        app: task-service
+    spec:
+      serviceAccountName: task-service
+      containers:
+        - name: task-service
+          image: "telos-task-service:latest"
+          ports:
+            - containerPort: 3500
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          envFrom:
+            - configMapRef:
+                name: task-service-config
+            - secretRef:
+                name: task-service-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-service
+  namespace: telos
+spec:
+  selector:
+    app: task-service
+  ports:
+    - port: 3500
+      targetPort: 3500

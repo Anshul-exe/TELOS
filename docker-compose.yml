@@ -1,0 +1,119 @@
+##############################################################################
+# TELOS – local development compose file
+# -----------------------------------------------------------------------
+# Brings up every service + backing store needed for a full local run:
+#   app services  : task-service, auth-service, notification-service, frontend
+#   data stores   : mongo (shared by task & notification services, separate DBs),
+#                   postgres (auth-service)
+#   infra         : localstack (SQS only), localstack-init (creates the queue)
+#
+# Usage:
+#   docker compose up -d            # start everything
+#   docker compose down -v          # stop + remove volumes
+##############################################################################
+
+services:
+  # ── Data stores ──────────────────────────────────────────────────────
+
+  mongo:
+    image: mongo:4.4.6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: telos
+      POSTGRES_PASSWORD: telos
+      POSTGRES_DB: auth
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  # ── LocalStack (SQS) ────────────────────────────────────────────────
+
+  localstack:
+    image: localstack/localstack:4.4.0
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      DEFAULT_REGION: ap-south-1
+
+  # One-shot init container: creates the SQS queue, then exits.
+  localstack-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - localstack
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: ap-south-1
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Waiting for LocalStack SQS...'
+        until aws --endpoint-url http://localstack:4566 sqs list-queues 2>/dev/null; do
+          sleep 2
+        done
+        echo 'Creating telos-task-events queue...'
+        aws --endpoint-url http://localstack:4566 sqs create-queue --queue-name telos-task-events
+        echo 'Queue ready.'
+      "
+
+  # ── App services ─────────────────────────────────────────────────────
+
+  task-service:
+    build:
+      context: ./services/task-service
+    ports:
+      - "3500:3500"
+    depends_on:
+      - mongo
+      - localstack-init
+    environment:
+      PORT: 3500
+      MONGO_CONN_STR: mongodb://mongo:27017/tasks
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/telos-task-events
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: test          # dummy – LocalStack doesn't validate
+      AWS_SECRET_ACCESS_KEY: test      # dummy – LocalStack doesn't validate
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+    environment:
+      PORT: 4000
+      PG_CONN_STR: postgresql://telos:telos@postgres:5432/auth
+      JWT_SECRET: DEV-PLACEHOLDER-change-me-before-prod   # ⚠️  dev only
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+    ports:
+      - "4500:4500"
+    depends_on:
+      - mongo
+      - localstack-init
+    environment:
+      PORT: 4500
+      MONGO_CONN_STR: mongodb://mongo:27017
+      MONGO_DB_NAME: notifications
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/telos-task-events
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: test          # dummy – LocalStack doesn't validate
+      AWS_SECRET_ACCESS_KEY: test      # dummy – LocalStack doesn't validate
+
+  # frontend: not yet scaffolded – add back when ./frontend/Dockerfile exists
+
+volumes:
+  mongo-data:
+  pg-data:
