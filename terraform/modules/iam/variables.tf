@@ -39,3 +39,39 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ---------------------------------------------------------------------------
+# IRSA variables — Phase 2 (async microservices).
+# Roles are created only when enable_oidc_provider = true AND the respective
+# SQS queue ARN is non-empty, so these variables are safe to leave at defaults
+# for stacks that haven't wired SQS yet.
+# ---------------------------------------------------------------------------
+
+variable "k8s_namespace" {
+  description = "Kubernetes namespace the application service accounts live in (used in IRSA trust policies)."
+  type        = string
+  default     = "telos"
+}
+
+variable "task_service_sa_name" {
+  description = "Kubernetes service account name for task-service."
+  type        = string
+  default     = "task-service"
+}
+
+variable "notification_service_sa_name" {
+  description = "Kubernetes service account name for notification-service."
+  type        = string
+  default     = "notification-service"
+}
+
+variable "task_service_sqs_queue_arn" {
+  description = "ARN of the SQS queue task-service publishes to. Required."
+  type        = string
+}
+
+variable "notification_service_sqs_queue_arn" {
+  description = "ARN of the SQS queue notification-service consumes from. Required."
+  type        = string
+}
+

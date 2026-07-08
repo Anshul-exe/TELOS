@@ -234,29 +234,126 @@ resource "aws_iam_openid_connect_provider" "this" {
 }
 
 # ---------------------------------------------------------------------------
-# TODO (IRSA role bindings — deferred until the consuming services exist):
+# IRSA role bindings — Phase 2 (async microservices).
 #
-#   Phase 2 — async microservices:
-#     * task-service role: sts:AssumeRoleWithWebIdentity trust scoped to its
-#       service account, attached policy allowing sqs:SendMessage to the task
-#       events queue.
-#     * notification-service role: same trust pattern, policy allowing
-#       sqs:ReceiveMessage / sqs:DeleteMessage / sqs:GetQueueAttributes on the
-#       queue (+ DLQ).
-#
-#   Phase 4 (and ALB controller setup) — platform add-ons:
-#     * aws-load-balancer-controller role: IRSA trust + the controller's IAM
-#       policy (see modules/alb-controller/iam_policy.json).
-#     * Any observability exporters needing AWS API access (e.g. CloudWatch).
-#
-# Each binding will follow the same shape:
-#   data.aws_iam_policy_document.<svc>_assume {
-#     principals { type = "Federated"
-#                  identifiers = [aws_iam_openid_connect_provider.this[0].arn] }
-#     condition  { test = "StringEquals"
-#                  variable = "<oidc>:sub"
-#                  values   = ["system:serviceaccount:<ns>:<sa>"] }
-#   }
-# These are intentionally omitted now because the service accounts / namespaces
-# they must trust do not exist yet.
+# Each role uses the same pattern as modules/alb-controller:
+#   data.aws_iam_policy_document (assume) → aws_iam_role → inline policy
+# The OIDC host is derived from the provider URL (strip https://).
 # ---------------------------------------------------------------------------
+
+locals {
+  oidc_host = local.create_oidc ? replace(var.cluster_oidc_issuer_url, "https://", "") : ""
+}
+
+# ── task-service IRSA (sqs:SendMessage) ───────────────────────────────────
+
+data "aws_iam_policy_document" "task_service_assume" {
+  count = local.create_oidc ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.this[0].arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = ["system:serviceaccount:${var.k8s_namespace}:${var.task_service_sa_name}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "task_service" {
+  count = local.create_oidc ? 1 : 0
+
+  name               = "${var.name_prefix}-task-service-irsa"
+  assume_role_policy = data.aws_iam_policy_document.task_service_assume[0].json
+
+  tags = merge(local.base_tags, { Name = "${var.name_prefix}-task-service-irsa" })
+}
+
+resource "aws_iam_role_policy" "task_service_sqs" {
+  count = local.create_oidc ? 1 : 0
+
+  name = "${var.name_prefix}-task-service-sqs-publish"
+  role = aws_iam_role.task_service[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "AllowSendMessage"
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage"]
+      Resource = var.task_service_sqs_queue_arn
+    }]
+  })
+}
+
+# ── notification-service IRSA (sqs:ReceiveMessage/Delete/GetQueueAttributes) ──
+
+data "aws_iam_policy_document" "notification_service_assume" {
+  count = local.create_oidc ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.this[0].arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = ["system:serviceaccount:${var.k8s_namespace}:${var.notification_service_sa_name}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "notification_service" {
+  count = local.create_oidc ? 1 : 0
+
+  name               = "${var.name_prefix}-notification-service-irsa"
+  assume_role_policy = data.aws_iam_policy_document.notification_service_assume[0].json
+
+  tags = merge(local.base_tags, { Name = "${var.name_prefix}-notification-service-irsa" })
+}
+
+resource "aws_iam_role_policy" "notification_service_sqs" {
+  count = local.create_oidc ? 1 : 0
+
+  name = "${var.name_prefix}-notification-service-sqs-consume"
+  role = aws_iam_role.notification_service[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowConsumeMessages"
+      Effect = "Allow"
+      Action = [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+      ]
+      Resource = var.notification_service_sqs_queue_arn
+    }]
+  })
+}
+

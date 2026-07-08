@@ -43,3 +43,17 @@ output "oidc_provider_url" {
   description = "The OIDC provider URL (host/path form, null until created)."
   value       = one(aws_iam_openid_connect_provider.this[*].url)
 }
+
+# IRSA — Phase 2 (async microservices)
+output "task_service_irsa_role_arn" {
+  description = "ARN of the IRSA role for task-service (sqs:SendMessage). Null when OIDC or the SQS queue ARN is not configured."
+  value       = one(aws_iam_role.task_service[*].arn)
+  depends_on  = [aws_iam_role_policy.task_service_sqs]
+}
+
+output "notification_service_irsa_role_arn" {
+  description = "ARN of the IRSA role for notification-service (sqs:ReceiveMessage/Delete/GetQueueAttributes). Null when OIDC or the SQS queue ARN is not configured."
+  value       = one(aws_iam_role.notification_service[*].arn)
+  depends_on  = [aws_iam_role_policy.notification_service_sqs]
+}
+
