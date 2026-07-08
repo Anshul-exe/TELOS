@@ -46,6 +46,38 @@ output "ecr_repository_urls" {
   value       = module.ecr.repository_urls
 }
 
+# SQS
+output "sqs_queue_url" {
+  description = "URL of the telos-task-events SQS queue."
+  value       = module.sqs.queue_url
+}
+
+output "sqs_queue_arn" {
+  description = "ARN of the telos-task-events SQS queue."
+  value       = module.sqs.queue_arn
+}
+
+output "sqs_dlq_url" {
+  description = "URL of the telos-task-events dead-letter queue."
+  value       = module.sqs.dlq_url
+}
+
+output "sqs_dlq_arn" {
+  description = "ARN of the telos-task-events dead-letter queue."
+  value       = module.sqs.dlq_arn
+}
+
+# IRSA — Phase 2 (async microservices)
+output "task_service_irsa_role_arn" {
+  description = "IRSA role ARN for task-service (annotate the K8s SA with eks.amazonaws.com/role-arn)."
+  value       = module.iam.task_service_irsa_role_arn
+}
+
+output "notification_service_irsa_role_arn" {
+  description = "IRSA role ARN for notification-service (annotate the K8s SA with eks.amazonaws.com/role-arn)."
+  value       = module.iam.notification_service_irsa_role_arn
+}
+
 # ALB Controller (IRSA) — annotate the aws-load-balancer-controller service
 # account with this ARN during the helm install on the bastion.
 output "alb_controller_role_arn" {

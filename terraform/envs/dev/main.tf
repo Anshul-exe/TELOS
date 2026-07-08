@@ -22,7 +22,7 @@ provider "aws" {
 }
 
 # ---------------------------------------------------------------------------
-# Module graph (Phase 1). Textual order: vpc -> iam -> ecr -> eks
+# Module graph (Phase 1+2). Textual order: vpc -> iam -> ecr -> sqs -> eks
 #                                         -> node-groups -> bastion
 #
 # Dependency notes:
@@ -61,11 +61,21 @@ module "iam" {
   # known-only-after-apply on first run; the static toggle keeps `count` valid.
   enable_oidc_provider    = true
   cluster_oidc_issuer_url = module.eks.oidc_issuer_url
+
+  # Phase 2 — IRSA for async microservices. The SQS ARNs gate role creation:
+  # roles are only created when both OIDC is enabled and an ARN is supplied.
+  task_service_sqs_queue_arn         = module.sqs.queue_arn
+  notification_service_sqs_queue_arn = module.sqs.queue_arn
 }
 
 module "ecr" {
   source = "../../modules/ecr"
   # No dependencies. Defaults create telos-frontend / telos-backend repos.
+}
+
+module "sqs" {
+  source = "../../modules/sqs"
+  # No dependencies. Defaults create telos-task-events + DLQ.
 }
 
 module "eks" {
