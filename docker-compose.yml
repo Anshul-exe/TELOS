@@ -79,8 +79,8 @@ services:
       SQS_QUEUE_URL: http://localstack:4566/000000000000/telos-task-events
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_REGION: ap-south-1
-      AWS_ACCESS_KEY_ID: test          # dummy – LocalStack doesn't validate
-      AWS_SECRET_ACCESS_KEY: test      # dummy – LocalStack doesn't validate
+      AWS_ACCESS_KEY_ID: test # dummy – LocalStack doesn't validate
+      AWS_SECRET_ACCESS_KEY: test # dummy – LocalStack doesn't validate
 
   auth-service:
     build:
@@ -92,7 +92,7 @@ services:
     environment:
       PORT: 4000
       PG_CONN_STR: postgresql://telos:telos@postgres:5432/auth
-      JWT_SECRET: DEV-PLACEHOLDER-change-me-before-prod   # ⚠️  dev only
+      JWT_SECRET: DEV-PLACEHOLDER-change-me-before-prod
 
   notification-service:
     build:
@@ -109,8 +109,8 @@ services:
       SQS_QUEUE_URL: http://localstack:4566/000000000000/telos-task-events
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_REGION: ap-south-1
-      AWS_ACCESS_KEY_ID: test          # dummy – LocalStack doesn't validate
-      AWS_SECRET_ACCESS_KEY: test      # dummy – LocalStack doesn't validate
+      AWS_ACCESS_KEY_ID: test # dummy – LocalStack doesn't validate
+      AWS_SECRET_ACCESS_KEY: test # dummy – LocalStack doesn't validate
 
   # frontend: not yet scaffolded – add back when ./frontend/Dockerfile exists
 
