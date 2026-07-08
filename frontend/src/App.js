@@ -1,69 +1,52 @@
-import React from "react";
-import Tasks from "./Tasks";
-import { Paper, TextField, Checkbox, Button } from "@material-ui/core";
+import React, { useState } from "react";
+import { useAuth } from "./context/AuthContext";
+import AuthPage from "./components/AuthPage";
+import TaskView from "./components/TaskView";
+import Notifications from "./components/Notifications";
 import "./App.css";
 
-class App extends Tasks {
-  state = { tasks: [], currentTask: "" };
+function App() {
+  const { user, logout } = useAuth();
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  render() {
-    const { tasks, currentTask } = this.state;
-    return (
-      <div className="app">
-        <header className="app-header">
-          <h1>My To-Do List</h1>
-        </header>
-        <div className="main-content">
-          <Paper elevation={3} className="todo-container">
-            <form onSubmit={this.handleSubmit} className="task-form">
-              <TextField
-                variant="outlined"
-                size="small"
-                className="task-input"
-                value={currentTask}
-                required={true}
-                onChange={this.handleChange}
-                placeholder="Add New TO-DO"
-              />
-              <Button
-                className="add-task-btn"
-                color="primary"
-                variant="outlined"
-                type="submit"
-              >
-                Add Task
-              </Button>
-            </form>
-            <div className="tasks-list">
-              {tasks.map((task) => (
-                <Paper key={task._id} className="task-item">
-                  <Checkbox
-                    checked={task.completed}
-                    onClick={() => this.handleUpdate(task._id)}
-                    color="primary"
-                  />
-                  <div
-                    className={
-                      task.completed ? "task-text completed" : "task-text"
-                    }
-                  >
-                    {task.task}
-                  </div>
-                  <Button
-                    onClick={() => this.handleDelete(task._id)}
-                    color="secondary"
-                    className="delete-task-btn"
-                  >
-                    Delete
-                  </Button>
-                </Paper>
-              ))}
-            </div>
-          </Paper>
-        </div>
-      </div>
-    );
+  if (!user) {
+    return <AuthPage />;
   }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1 className="app-title">TELOS</h1>
+        <div className="header-actions">
+          <button
+            id="notifications-btn"
+            className="header-btn notification-btn"
+            onClick={() => setShowNotifications(!showNotifications)}
+            title="Notifications"
+          >
+            <span className="notification-bell" role="img" aria-label="notifications">
+              &#x1F514;
+            </span>
+          </button>
+          <span className="user-email">{user.email}</span>
+          <button
+            id="logout-btn"
+            className="header-btn logout-btn"
+            onClick={logout}
+          >
+            Sign Out
+          </button>
+        </div>
+      </header>
+      <div className="main-content">
+        <TaskView />
+      </div>
+      <Notifications
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+      />
+    </div>
+  );
 }
 
 export default App;
