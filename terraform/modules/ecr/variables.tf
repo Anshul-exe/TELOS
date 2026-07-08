@@ -3,7 +3,10 @@ variable "repository_names" {
   type        = list(string)
   default = [
     "telos-frontend",
-    "telos-backend",
+    "telos-backend", # [FLAG] unused (replaced by 3 microservices), pending removal
+    "telos-task-service",
+    "telos-auth-service",
+    "telos-notification-service",
   ]
 }
 

@@ -70,7 +70,7 @@ module "iam" {
 
 module "ecr" {
   source = "../../modules/ecr"
-  # No dependencies. Defaults create telos-frontend / telos-backend repos.
+  # No dependencies. Defaults create frontend, backend (unused), task, auth, notification repos.
 }
 
 module "sqs" {
