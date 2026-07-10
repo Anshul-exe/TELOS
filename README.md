@@ -711,6 +711,61 @@ kubectl describe ingress mainlb -n telos
 
 ---
 
+## Automated Deployment — `deploy.sh` + Helm (Phase 2)
+
+> The manual `kubectl apply` flow above is the legacy path. The current stack
+> (auth / task / notification services + databases) is deployed from the Helm
+> chart at [`manifests/helm/telos/`](manifests/helm/telos/README.md) via the
+> `deploy.sh` wrapper at the repo root. This replaces the old
+> `export ... ; envsubst < *.yaml | kubectl apply` dance.
+
+### Prerequisites
+
+- **Run from the bastion only.** The EKS API endpoint is private; `deploy.sh`
+  hard-fails early if it cannot reach the cluster API (i.e. if run from a
+  laptop). SSH into the bastion and run it there.
+- **`terraform apply` for `terraform/envs/dev` must already be done** this
+  session — the script reads live values (`sqs_queue_url`,
+  `task_service_irsa_role_arn`, `notification_service_irsa_role_arn`) from
+  `terraform output`.
+- `helm`, `kubectl`, and `terraform` on PATH, with a kubeconfig pointing at
+  `telos-cluster` (`aws eks update-kubeconfig --name telos-cluster --region ap-south-1`).
+
+### What it does
+
+1. Preflight: checks `helm`/`kubectl`/`terraform` exist and that the **private
+   EKS API is reachable** (the bastion gate).
+2. Reads the dynamic values from `terraform output`.
+3. Writes a **gitignored** `generated-values.yaml` (IRSA ARNs + SQS URL).
+4. Validates the render with `helm template` — this trips the chart's
+   `telos.assertNoPlaceholder` guard if any `${...}` placeholder survived.
+5. `helm upgrade --install telos manifests/helm/telos/ -f generated-values.yaml -n telos --create-namespace`.
+6. Prints a post-deploy checklist (pods, ingress URL, notification log tail).
+
+### Usage
+
+```bash
+# On the bastion, from the repo root:
+./deploy.sh              # full deploy (read TF outputs -> helm upgrade --install)
+./deploy.sh --dry-run    # render only (writes generated-values.yaml, no cluster writes)
+./deploy.sh --destroy    # helm uninstall telos
+./deploy.sh --help
+```
+
+Provide real secrets (don't ship the chart's dev defaults) either by extending
+`generated-values.yaml` or via env-driven `--set` — see the
+[chart README](manifests/helm/telos/README.md#common-overrides).
+
+### Post-deploy checklist (printed by the script)
+
+```bash
+kubectl get pods -n telos
+kubectl get ingress mainlb -n telos                       # ALB address; app at http://telos.anshulfml.me/
+kubectl logs -n telos -l app=notification-service -f --tail=50   # watch SQS events get consumed
+```
+
+---
+
 ## Project Structure
 
 ```

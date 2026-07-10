@@ -1,8 +1,14 @@
 {{- if .Values.ingress.enabled }}
 {{- $ns := include "telos.namespace" . }}
 {{- $ing := .Values.ingress }}
-# ALB ingress — HTTP-only (no TLS block yet, matching Phase 2). Restoring HTTPS
-# is tracked separately (fresh ACM cert; plan/phase2.md §7).
+{{- $tls := $ing.tls | default dict }}
+{{- /* Guard against a copy-pasted ${...} placeholder in the cert ARN, same as the terraform outputs. */ -}}
+{{- $certArn := include "telos.assertNoPlaceholder" (dict "val" ($tls.certificateArn | default "") "field" "ingress.tls.certificateArn") }}
+{{- $tlsOn := and ($tls.enabled | default false) (ne $certArn "") }}
+# ALB ingress. HTTPS is enabled when ingress.tls.enabled is true AND a non-empty
+# ingress.tls.certificateArn (ACM) is supplied — then the ALB listens on both
+# 80 and 443 and redirects HTTP -> HTTPS. With no cert ARN it falls back to the
+# Phase 2 HTTP-only behaviour. Cert ARN is supplied at install (see README.md).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,6 +18,15 @@ metadata:
 {{ include "telos.labels" . | indent 4 }}
   annotations:
 {{ toYaml $ing.annotations | indent 4 }}
+    {{- if $tlsOn }}
+    # --- TLS / HTTPS (ACM) ---
+    alb.ingress.kubernetes.io/certificate-arn: {{ $certArn | quote }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: {{ $tls.sslRedirectPort | default "443" | quote }}
+    {{- else }}
+    # TLS disabled (no ACM cert ARN supplied) — HTTP-only listener.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    {{- end }}
 spec:
   ingressClassName: {{ $ing.className }}
   rules:

@@ -74,7 +74,16 @@
         "enabled": { "type": "boolean" },
         "className": { "type": "string" },
         "host": { "type": "string" },
-        "annotations": { "type": "object" }
+        "annotations": { "type": "object" },
+        "tls": {
+          "type": "object",
+          "description": "ALB HTTPS via ACM. certificateArn is supplied at install time (not terraform-managed); empty falls back to HTTP-only.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "certificateArn": { "type": "string" },
+            "sslRedirectPort": { "type": "string" }
+          }
+        }
       }
     }
   },

@@ -11,9 +11,13 @@ are now first-class Helm values under the [`terraformOutputs`](#terraform-source
 key.
 
 > Persistence is intentionally **unchanged** from Phase 2: Mongo and Postgres
-> still use `hostPath` PVs (non-persistent across Spot node churn). Ingress is
-> still **HTTP-only** — no TLS block yet. Both are tracked as separate follow-ups
-> in `plan/phase2.md`.
+> still use `hostPath` PVs (non-persistent across Spot node churn) — tracked as a
+> follow-up in `plan/phase2.md`.
+>
+> **HTTPS is now restored** (closes the "HTTP-Only Ingress" limitation). The ALB
+> terminates TLS with an ACM cert and redirects HTTP→HTTPS. The cert ARN is a
+> Helm value (`ingress.tls.certificateArn`) supplied at install time — see
+> [TLS / HTTPS](#tls--https) below.
 
 ---
 
@@ -33,7 +37,7 @@ manifests/helm/telos/
     ├── task-service.yaml      # IRSA + SQS wired from terraformOutputs
     ├── notification-service.yaml
     ├── frontend.yaml
-    ├── ingress.yaml           # ALB, HTTP-only
+    ├── ingress.yaml           # ALB, HTTPS (ACM) + HTTP->HTTPS redirect
     └── database/
         ├── mongo.yaml         # Secret + hostPath PV/PVC + Deploy + Svc
         └── postgres.yaml      # hostPath PV/PVC + Deploy + Svc
@@ -70,6 +74,50 @@ a clear message — this is the exact STS `ValidationError` foot-gun documented 
 Other secrets (`secrets.mongo.*`, `secrets.auth.jwtSecret`) live under the
 `secrets:` key and are still plain values for now — replacing them with External
 Secrets Operator / Sealed Secrets is the next debt item in `plan/phase2.md §7`.
+
+---
+
+## TLS / HTTPS
+
+The ALB terminates TLS with an **ACM certificate** and redirects all HTTP
+traffic to HTTPS. This is controlled by the `ingress.tls` block:
+
+| values.yaml key                  | Meaning                                                            |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `ingress.tls.enabled`            | Master switch for HTTPS (default `true`).                          |
+| `ingress.tls.certificateArn`     | ACM cert ARN for `telos.anshulfml.me`. **Empty by default.**      |
+| `ingress.tls.sslRedirectPort`    | Port the HTTP→HTTPS redirect targets (default `"443"`).           |
+
+When `tls.enabled` is `true` **and** a non-empty `certificateArn` is supplied,
+the ingress template emits:
+
+```yaml
+alb.ingress.kubernetes.io/certificate-arn: <arn>
+alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+alb.ingress.kubernetes.io/ssl-redirect: '443'
+```
+
+If the ARN is left blank the chart **falls back to HTTP-only**
+(`listen-ports: '[{"HTTP": 80}]'`), so `helm template`/`lint` still pass with
+bare defaults. A literal `${...}` placeholder in the ARN is **hard-rejected**
+at render time by the same guard used for the terraform outputs.
+
+### Why the cert ARN is not in `values.yaml` / terraform
+
+The ACM certificate is **not** a terraform-managed resource in this repo (there
+is no `aws_acm_certificate` in `terraform/`, therefore no `terraform output` to
+source it from). To avoid baking a single cert ARN permanently into the chart,
+it is supplied **at install time** — either:
+
+- `deploy.sh` picks it up from the `CERTIFICATE_ARN` env var (it has the current
+  cert ARN as its default), writes it into `generated-values.yaml`, then installs; **or**
+- pass it directly on any `helm` invocation:
+
+```bash
+helm upgrade --install telos manifests/helm/telos \
+  --namespace telos --create-namespace \
+  --set ingress.tls.certificateArn="arn:aws:acm:ap-south-1:632377784699:certificate/cbe8b152-372d-47d9-b6bb-74df194e4c81"
+```
 
 ---
 
@@ -159,6 +207,8 @@ confirm `notification-service` logs the SQS event and it appears at
 | Pin a specific image tag            | `--set taskService.image.tag=<sha>`                        |
 | Disable a service (e.g. frontend)   | `--set frontend.enabled=false`                             |
 | Change ingress host                 | `--set ingress.host=telos.example.com`                     |
+| Supply / rotate the ACM cert (HTTPS)| `--set ingress.tls.certificateArn=arn:aws:acm:...`         |
+| Disable HTTPS (fall back to HTTP)   | `--set ingress.tls.enabled=false`                          |
 | Skip the ECR pull secret on frontend| `--set frontend.imagePullSecret=""`                        |
 
 > The frontend's `imagePullSecret` (`ecr-registry-secret`) is **not** created by
