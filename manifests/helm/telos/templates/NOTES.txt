@@ -19,10 +19,22 @@ Terraform-sourced values in effect:
   notification IRSA ......... (EMPTY) SA annotation omitted — SQS consume will FAIL at runtime.
 {{- end }}
 
+Ingress TLS:
+{{- if and (.Values.ingress.tls.enabled) (ne (.Values.ingress.tls.certificateArn | default "") "") }}
+  HTTPS ENABLED ............. ACM cert {{ .Values.ingress.tls.certificateArn }}
+                             ALB listens on 80 + 443, HTTP -> HTTPS redirect.
+{{- else }}
+  HTTPS DISABLED ............ HTTP-only (no ACM cert ARN supplied via ingress.tls.certificateArn).
+{{- end }}
+
 Next steps:
   1. Verify pods:      kubectl -n {{ include "telos.namespace" . }} get pods
-  2. Verify ingress:   kubectl -n {{ include "telos.namespace" . }} get ingress mainlb
+  2. Verify ingress:   kubectl -n {{ include "telos.namespace" . }} describe ingress mainlb
+{{- if and (.Values.ingress.tls.enabled) (ne (.Values.ingress.tls.certificateArn | default "") "") }}
+  3. App URL (HTTPS):  https://{{ .Values.ingress.host }}/
+{{- else }}
   3. App URL (HTTP):   http://{{ .Values.ingress.host }}/
+{{- end }}
 
 If any terraform value above is EMPTY, re-run with the populated overrides:
   helm upgrade {{ .Release.Name }} manifests/helm/telos \
