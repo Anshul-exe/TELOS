@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+{{- $ns := include "telos.namespace" . }}
+{{- $ing := .Values.ingress }}
+# ALB ingress — HTTP-only (no TLS block yet, matching Phase 2). Restoring HTTPS
+# is tracked separately (fresh ACM cert; plan/phase2.md §7).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mainlb
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+  annotations:
+{{ toYaml $ing.annotations | indent 4 }}
+spec:
+  ingressClassName: {{ $ing.className }}
+  rules:
+    - host: {{ $ing.host | quote }}
+      http:
+        paths:
+          {{- if .Values.authService.enabled }}
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: {{ .Values.authService.port }}
+          {{- end }}
+          {{- if .Values.taskService.enabled }}
+          - path: /api/tasks
+            pathType: Prefix
+            backend:
+              service:
+                name: task-service
+                port:
+                  number: {{ .Values.taskService.port }}
+          {{- end }}
+          {{- if .Values.notificationService.enabled }}
+          - path: /api/notifications
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: {{ .Values.notificationService.port }}
+          {{- end }}
+          {{- if .Values.frontend.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: {{ .Values.frontend.port }}
+          {{- end }}
+{{- end }}

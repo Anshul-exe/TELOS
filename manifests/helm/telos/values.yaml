@@ -1,0 +1,183 @@
+##############################################################################
+# TELOS umbrella chart — values.yaml
+# ---------------------------------------------------------------------------
+# This file replaces the old `envsubst < *.yaml | kubectl apply` workflow.
+# The three placeholders that used to be substituted by hand
+#   ${SQS_QUEUE_URL}, ${TASK_SERVICE_IRSA_ARN}, ${NOTIFICATION_SERVICE_IRSA_ARN}
+# now live under `terraformOutputs:` below and MUST be populated from
+# `terraform output` before `helm install`/`upgrade`. See README.md.
+##############################################################################
+
+# ---------------------------------------------------------------------------
+# GLOBAL
+# ---------------------------------------------------------------------------
+global:
+  namespace: telos
+  # Registry that fronts every service image. Matches the ECR account/region
+  # from Phase 1 (module.ecr). Override with --set global.imageRegistry=... if
+  # the account or region changes.
+  imageRegistry: "632377784699.dkr.ecr.ap-south-1.amazonaws.com"
+  # AWS region the services talk to (SQS client, STS). Matches var.region.
+  awsRegion: "ap-south-1"
+
+# ---------------------------------------------------------------------------
+# TERRAFORM OUTPUTS  (REQUIRED — populate before install)
+# ---------------------------------------------------------------------------
+# Every value here is produced by `terraform output` in terraform/envs/dev.
+# They are empty by default. Behaviour when left empty:
+#   * taskServiceIrsaArn / notificationServiceIrsaArn empty  -> the SA's
+#     eks.amazonaws.com/role-arn annotation is OMITTED (no IRSA). The pod falls
+#     back to the node role, which is fine for a dry `helm template` but will
+#     NOT have SQS permissions at runtime.
+#   * sqsQueueUrl empty -> SQS_QUEUE_URL is unset; the service code (sqs.js /
+#     consumer.js) already no-ops with a warning instead of crashing.
+# templates/_helpers.tpl `telos.requireArn` still HARD-FAILS if a value is left
+# as a literal `${...}` placeholder — the exact STS ValidationError foot-gun
+# documented in plan/phase2.md. So render is safe with defaults; only the old
+# copy-pasted placeholders are rejected.
+#
+#   terraformOutputs.sqsQueueUrl              <- terraform output -raw sqs_queue_url
+#   terraformOutputs.taskServiceIrsaArn       <- terraform output -raw task_service_irsa_role_arn
+#   terraformOutputs.notificationServiceIrsaArn <- terraform output -raw notification_service_irsa_role_arn
+terraformOutputs:
+  # SQS queue URL used by task-service (publisher) and notification-service
+  # (consumer). e.g. https://sqs.ap-south-1.amazonaws.com/632377784699/telos-task-events
+  sqsQueueUrl: ""
+  # IRSA role ARN annotated onto the task-service ServiceAccount (SQS publish).
+  # e.g. arn:aws:iam::632377784699:role/telos-task-service-irsa
+  taskServiceIrsaArn: ""
+  # IRSA role ARN annotated onto the notification-service ServiceAccount (SQS consume).
+  # e.g. arn:aws:iam::632377784699:role/telos-notification-service-irsa
+  notificationServiceIrsaArn: ""
+
+# ---------------------------------------------------------------------------
+# SHARED SECRETS  (populated from manifests/Database/secrets.yaml today)
+# ---------------------------------------------------------------------------
+# Kept in values so the chart is self-contained. Phase 2 debt: replace with
+# External Secrets Operator / Sealed Secrets (see plan/phase2.md §7).
+secrets:
+  # Mongo root credentials (were the base64 `mongo-sec` Secret). Provide PLAIN
+  # text here — the template base64-encodes them into the Secret.
+  mongo:
+    username: "admin"
+    password: "password123"
+  # JWT signing secret for auth-service. MUST be overridden for any real run.
+  auth:
+    jwtSecret: "DEV-PLACEHOLDER-change-me-before-prod"
+
+# ---------------------------------------------------------------------------
+# AUTH-SERVICE
+# ---------------------------------------------------------------------------
+authService:
+  enabled: true
+  image:
+    repository: telos-auth-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 4000
+  # Postgres connection string. Points at the in-cluster postgres Service.
+  pgConnStr: "postgresql://telos:telos@postgres:5432/auth"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+# ---------------------------------------------------------------------------
+# TASK-SERVICE  (SQS publisher — needs terraformOutputs.sqsQueueUrl + taskServiceIrsaArn)
+# ---------------------------------------------------------------------------
+taskService:
+  enabled: true
+  image:
+    repository: telos-task-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 3500
+  # Mongo connection string (targets the `tasks` DB on the shared mongodb-svc).
+  mongoConnStr: "mongodb://mongodb-svc:27017/tasks"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+# ---------------------------------------------------------------------------
+# NOTIFICATION-SERVICE  (SQS consumer — needs terraformOutputs.sqsQueueUrl + notificationServiceIrsaArn)
+# ---------------------------------------------------------------------------
+notificationService:
+  enabled: true
+  image:
+    repository: telos-notification-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 4500
+  # Mongo connection string (base URI; DB name supplied via mongoDbName).
+  mongoConnStr: "mongodb://mongodb-svc:27017"
+  mongoDbName: "notifications"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+# ---------------------------------------------------------------------------
+# FRONTEND
+# ---------------------------------------------------------------------------
+frontend:
+  enabled: true
+  image:
+    repository: telos-frontend
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 3000
+  # Public API base the React bundle calls (routed by the ALB ingress).
+  backendUrl: "https://telos.anshulfml.me/api/tasks"
+  # imagePullSecret for ECR (was `ecr-registry-secret`). This chart does NOT
+  # create the secret; it must already exist in the namespace. Set to "" to
+  # omit the imagePullSecrets block entirely.
+  imagePullSecret: "ecr-registry-secret"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+
+# ---------------------------------------------------------------------------
+# DATABASES  (in-cluster, hostPath PVs — persistence strategy UNCHANGED)
+# ---------------------------------------------------------------------------
+database:
+  mongo:
+    enabled: true
+    image: mongo:4.4.6
+    port: 27017
+    # hostPath PV (non-persistent across Spot node churn — see plan/phase2.md).
+    persistence:
+      size: 1Gi
+      hostPath: /data/db
+    # Pin Mongo onto the db-api node group (taint/label from Phase 1).
+    nodeSelectorWorkload: db-api
+    tolerationValue: db-api
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+  postgres:
+    enabled: true
+    image: postgres:16-alpine
+    port: 5432
+    user: telos
+    password: telos
+    db: auth
+    persistence:
+      size: 5Gi
+      hostPath: /data/postgres
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+# ---------------------------------------------------------------------------
+# INGRESS  (ALB, HTTP-only — no TLS block yet, matching Phase 2)
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: alb
+  host: telos.anshulfml.me
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'

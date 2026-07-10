@@ -1,0 +1,24 @@
+apiVersion: v2
+name: telos
+description: >-
+  TELOS umbrella chart — the full Phase 2 microservice stack (auth-service,
+  task-service, notification-service, frontend) plus in-cluster databases
+  (MongoDB, Postgres). Replaces the plain manifests + envsubst workflow.
+  Persistence intentionally kept on hostPath PVs (unchanged from Phase 2).
+type: application
+
+# Chart version — bump on template changes.
+version: 0.1.0
+
+# The version of the TELOS platform this chart deploys (informational).
+appVersion: "phase-2"
+
+maintainers:
+  - name: Mir (Anshul Singh Chauhan)
+
+keywords:
+  - telos
+  - microservices
+  - eks
+  - irsa
+  - sqs

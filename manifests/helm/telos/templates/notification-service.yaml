@@ -1,0 +1,94 @@
+{{- if .Values.notificationService.enabled }}
+{{- $ns := include "telos.namespace" . }}
+{{- $svc := .Values.notificationService }}
+{{/* Guard: reject leftover ${...} placeholders (the Phase 2 envsubst foot-gun). */}}
+{{- $irsaArn := include "telos.assertNoPlaceholder" (dict "val" .Values.terraformOutputs.notificationServiceIrsaArn "field" "terraformOutputs.notificationServiceIrsaArn") }}
+{{- $sqsUrl := include "telos.assertNoPlaceholder" (dict "val" .Values.terraformOutputs.sqsQueueUrl "field" "terraformOutputs.sqsQueueUrl") }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: notification-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    app: notification-service
+  {{- if $irsaArn }}
+  annotations:
+    # IRSA role ARN — from `terraform output -raw notification_service_irsa_role_arn`.
+    eks.amazonaws.com/role-arn: {{ $irsaArn | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-service-config
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+data:
+  PORT: {{ $svc.port | quote }}
+  MONGO_DB_NAME: {{ $svc.mongoDbName | quote }}
+  AWS_REGION: {{ .Values.global.awsRegion | quote }}
+  {{- if $sqsUrl }}
+  SQS_QUEUE_URL: {{ $sqsUrl | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: notification-service-secret
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+type: Opaque
+stringData:
+  MONGO_CONN_STR: {{ $svc.mongoConnStr | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    app: notification-service
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      serviceAccountName: notification-service
+      containers:
+        - name: notification-service
+          image: {{ include "telos.image" (dict "root" $ "image" $svc.image) | quote }}
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          resources:
+{{ toYaml $svc.resources | indent 12 }}
+          envFrom:
+            - configMapRef:
+                name: notification-service-config
+            - secretRef:
+                name: notification-service-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

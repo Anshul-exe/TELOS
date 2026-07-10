@@ -1,0 +1,132 @@
+{{- if .Values.database.mongo.enabled }}
+{{- $ns := include "telos.namespace" . }}
+{{- $mongo := .Values.database.mongo }}
+---
+# Mongo root credentials. Was the hand-maintained base64 `mongo-sec` Secret;
+# now rendered from plain-text .Values.secrets.mongo (chart base64-encodes).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongo-sec
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+type: Opaque
+data:
+  username: {{ .Values.secrets.mongo.username | b64enc | quote }}
+  password: {{ .Values.secrets.mongo.password | b64enc | quote }}
+---
+# hostPath PV — persistence strategy UNCHANGED from Phase 2 (non-persistent
+# across Spot node churn; documented limitation, deliberately not migrated).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongo-pv
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  capacity:
+    storage: {{ $mongo.persistence.size }}
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: {{ $mongo.persistence.hostPath }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-volume-claim
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: {{ $mongo.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload
+                    operator: In
+                    values:
+                      - {{ $mongo.nodeSelectorWorkload }}
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: {{ $mongo.tolerationValue }}
+          effect: NoSchedule
+      containers:
+        - name: mon
+          image: {{ $mongo.image }}
+          command:
+            - "numactl"
+            - "--interleave=all"
+            - "mongod"
+            - "--wiredTigerCacheSizeGB"
+            - "0.1"
+            - "--bind_ip"
+            - "0.0.0.0"
+          ports:
+            - containerPort: {{ $mongo.port }}
+          resources:
+{{ toYaml $mongo.resources | indent 12 }}
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-sec
+                  key: username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-sec
+                  key: password
+          volumeMounts:
+            - name: mongo-volume
+              mountPath: /data/db
+      volumes:
+        - name: mongo-volume
+          persistentVolumeClaim:
+            claimName: mongo-volume-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-svc
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  selector:
+    app: mongodb
+  ports:
+    - name: mongodb-svc
+      protocol: TCP
+      port: {{ $mongo.port }}
+      targetPort: {{ $mongo.port }}
+{{- end }}

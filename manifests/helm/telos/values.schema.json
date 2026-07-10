@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "TELOS umbrella chart values",
+  "description": "Schema for manifests/helm/telos. Enforces the shape of the terraform-sourced values and the per-service blocks. `helm install`/`lint`/`template` validate values against this file automatically.",
+  "type": "object",
+  "required": ["global", "terraformOutputs", "secrets"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": ["namespace", "imageRegistry", "awsRegion"],
+      "properties": {
+        "namespace": { "type": "string", "minLength": 1 },
+        "imageRegistry": { "type": "string", "minLength": 1 },
+        "awsRegion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "terraformOutputs": {
+      "type": "object",
+      "description": "Populate every field from `terraform output` before a real install. Empty strings are permitted so `helm template`/`lint` succeed with defaults, but a literal ${...} placeholder is rejected at render time by templates/_helpers.tpl.",
+      "required": ["sqsQueueUrl", "taskServiceIrsaArn", "notificationServiceIrsaArn"],
+      "properties": {
+        "sqsQueueUrl": {
+          "type": "string",
+          "description": "terraform output -raw sqs_queue_url"
+        },
+        "taskServiceIrsaArn": {
+          "type": "string",
+          "description": "terraform output -raw task_service_irsa_role_arn"
+        },
+        "notificationServiceIrsaArn": {
+          "type": "string",
+          "description": "terraform output -raw notification_service_irsa_role_arn"
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "required": ["mongo", "auth"],
+      "properties": {
+        "mongo": {
+          "type": "object",
+          "required": ["username", "password"],
+          "properties": {
+            "username": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "required": ["jwtSecret"],
+          "properties": {
+            "jwtSecret": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "authService": { "$ref": "#/definitions/service" },
+    "taskService": { "$ref": "#/definitions/service" },
+    "notificationService": { "$ref": "#/definitions/service" },
+    "frontend": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "port": { "type": "integer" },
+        "backendUrl": { "type": "string" },
+        "imagePullSecret": { "type": "string" }
+      }
+    },
+    "database": { "type": "object" },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    }
+  },
+  "definitions": {
+    "service": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "image": {
+          "type": "object",
+          "required": ["repository", "tag"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        }
+      }
+    }
+  }
+}

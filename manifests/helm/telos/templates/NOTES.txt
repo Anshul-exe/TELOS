@@ -1,0 +1,32 @@
+TELOS ({{ .Chart.Name }}-{{ .Chart.Version }}) installed into namespace "{{ include "telos.namespace" . }}".
+
+Release: {{ .Release.Name }}
+
+Terraform-sourced values in effect:
+{{- if .Values.terraformOutputs.sqsQueueUrl }}
+  SQS_QUEUE_URL ............. {{ .Values.terraformOutputs.sqsQueueUrl }}
+{{- else }}
+  SQS_QUEUE_URL ............. (EMPTY) task/notification services run with SQS disabled (no-op publish/consume).
+{{- end }}
+{{- if .Values.terraformOutputs.taskServiceIrsaArn }}
+  task-service IRSA ......... {{ .Values.terraformOutputs.taskServiceIrsaArn }}
+{{- else }}
+  task-service IRSA ......... (EMPTY) SA annotation omitted — SQS publish will FAIL at runtime.
+{{- end }}
+{{- if .Values.terraformOutputs.notificationServiceIrsaArn }}
+  notification IRSA ......... {{ .Values.terraformOutputs.notificationServiceIrsaArn }}
+{{- else }}
+  notification IRSA ......... (EMPTY) SA annotation omitted — SQS consume will FAIL at runtime.
+{{- end }}
+
+Next steps:
+  1. Verify pods:      kubectl -n {{ include "telos.namespace" . }} get pods
+  2. Verify ingress:   kubectl -n {{ include "telos.namespace" . }} get ingress mainlb
+  3. App URL (HTTP):   http://{{ .Values.ingress.host }}/
+
+If any terraform value above is EMPTY, re-run with the populated overrides:
+  helm upgrade {{ .Release.Name }} manifests/helm/telos \
+    --namespace {{ include "telos.namespace" . }} \
+    --set terraformOutputs.sqsQueueUrl="$(terraform -chdir=terraform/envs/dev output -raw sqs_queue_url)" \
+    --set terraformOutputs.taskServiceIrsaArn="$(terraform -chdir=terraform/envs/dev output -raw task_service_irsa_role_arn)" \
+    --set terraformOutputs.notificationServiceIrsaArn="$(terraform -chdir=terraform/envs/dev output -raw notification_service_irsa_role_arn)"

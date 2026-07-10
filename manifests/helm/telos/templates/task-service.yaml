@@ -1,0 +1,93 @@
+{{- if .Values.taskService.enabled }}
+{{- $ns := include "telos.namespace" . }}
+{{- $svc := .Values.taskService }}
+{{/* Guard: reject leftover ${...} placeholders (the Phase 2 envsubst foot-gun). */}}
+{{- $irsaArn := include "telos.assertNoPlaceholder" (dict "val" .Values.terraformOutputs.taskServiceIrsaArn "field" "terraformOutputs.taskServiceIrsaArn") }}
+{{- $sqsUrl := include "telos.assertNoPlaceholder" (dict "val" .Values.terraformOutputs.sqsQueueUrl "field" "terraformOutputs.sqsQueueUrl") }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: task-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    app: task-service
+  {{- if $irsaArn }}
+  annotations:
+    # IRSA role ARN — from `terraform output -raw task_service_irsa_role_arn`.
+    eks.amazonaws.com/role-arn: {{ $irsaArn | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: task-service-config
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+data:
+  PORT: {{ $svc.port | quote }}
+  AWS_REGION: {{ .Values.global.awsRegion | quote }}
+  {{- if $sqsUrl }}
+  SQS_QUEUE_URL: {{ $sqsUrl | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: task-service-secret
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+type: Opaque
+stringData:
+  MONGO_CONN_STR: {{ $svc.mongoConnStr | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    app: task-service
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: task-service
+  template:
+    metadata:
+      labels:
+        app: task-service
+    spec:
+      serviceAccountName: task-service
+      containers:
+        - name: task-service
+          image: {{ include "telos.image" (dict "root" $ "image" $svc.image) | quote }}
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          resources:
+{{ toYaml $svc.resources | indent 12 }}
+          envFrom:
+            - configMapRef:
+                name: task-service-config
+            - secretRef:
+                name: task-service-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-service
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  selector:
+    app: task-service
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

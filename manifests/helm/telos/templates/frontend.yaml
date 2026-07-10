@@ -1,0 +1,59 @@
+{{- if .Values.frontend.enabled }}
+{{- $ns := include "telos.namespace" . }}
+{{- $fe := .Values.frontend }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+    role: frontend
+    env: demo
+spec:
+  replicas: {{ $fe.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      role: frontend
+  template:
+    metadata:
+      labels:
+        role: frontend
+    spec:
+      {{- if $fe.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ $fe.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: frontend
+          image: {{ include "telos.image" (dict "root" $ "image" $fe.image) | quote }}
+          imagePullPolicy: {{ $fe.image.pullPolicy }}
+          resources:
+{{ toYaml $fe.resources | indent 12 }}
+          env:
+            - name: REACT_APP_BACKEND_URL
+              value: {{ $fe.backendUrl | quote }}
+          ports:
+            - containerPort: {{ $fe.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: {{ $ns }}
+  labels:
+{{ include "telos.labels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    role: frontend
+  ports:
+    - port: {{ $fe.port }}
+      protocol: TCP
+{{- end }}
