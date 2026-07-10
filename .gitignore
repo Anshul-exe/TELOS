@@ -1,5 +1,6 @@
 node_modules/
 secrets.yaml
+build/
 # plan/
 
 # Terraform
