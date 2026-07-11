@@ -28,6 +28,11 @@ spec:
   capacity:
     storage: {{ $mongo.persistence.size }}
   volumeMode: Filesystem
+  # Pin this PV to its PVC so the two identical hostPath PVs bind
+  # deterministically (they are otherwise interchangeable by size).
+  claimRef:
+    name: mongo-volume-claim
+    namespace: {{ $ns }}
   accessModes:
     - ReadWriteOnce
   hostPath:
