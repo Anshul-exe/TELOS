@@ -171,13 +171,34 @@ database:
       limits: { cpu: 500m, memory: 512Mi }
 
 # ---------------------------------------------------------------------------
-# INGRESS  (ALB, HTTP-only — no TLS block yet, matching Phase 2)
+# INGRESS  (ALB — HTTPS via ACM, with HTTP->HTTPS redirect)
 # ---------------------------------------------------------------------------
+# TLS is driven by `ingress.tls` below. When tls.enabled is true and a
+# certificateArn is supplied, the ingress template adds the ACM
+# certificate-arn / dual listen-ports / ssl-redirect annotations. The cert ARN
+# is intentionally NOT hardcoded here — it is not a terraform-managed resource
+# (there is no `aws_acm_certificate` in terraform/, hence no output to source),
+# so it must be supplied at install time via:
+#   --set ingress.tls.certificateArn=arn:aws:acm:ap-south-1:...:certificate/...
+# or the CERTIFICATE_ARN env var picked up by deploy.sh. See README.md.
 ingress:
   enabled: true
   className: alb
   host: telos.anshulfml.me
+  # TLS / HTTPS. Leave certificateArn empty to fall back to HTTP-only (the old
+  # Phase 2 behaviour) — the template drops the HTTPS annotations when the ARN
+  # is blank, so `helm template` still renders with bare defaults.
+  tls:
+    enabled: true
+    # ACM certificate ARN for telos.anshulfml.me. MUST be supplied at install
+    # (--set or deploy.sh CERTIFICATE_ARN); left blank so the chart is not
+    # permanently pinned to one cert.
+    certificateArn: ""
+    # Listener port the ALB redirects HTTP traffic to (ssl-redirect annotation).
+    sslRedirectPort: "443"
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    # NOTE: listen-ports is set by the template based on ingress.tls.enabled +
+    # certificateArn (HTTP+HTTPS when TLS is on, HTTP-only otherwise). Do not
+    # also pin it here or the two will fight.
