@@ -1,7 +1,7 @@
-# ThreeTierLab → Full DevOps Platform: Master Plan
+# TELOS → Full DevOps Platform: Master Plan
 
 **Owner:** Mir (Anshul Singh Chauhan)
-**Purpose:** Blueprint for expanding ThreeTierLab from a static 3-tier EKS app into a full DevOps portfolio platform — Terraform IaC, async microservices, Jenkins CI, ArgoCD CD, Prometheus/Grafana/Loki observability.
+**Purpose:** Blueprint for expanding Telos from a static 3-tier EKS app into a full DevOps portfolio platform — Terraform IaC, async microservices, Jenkins CI, ArgoCD CD, Prometheus/Grafana/Loki observability.
 **Primary goal:** DevOps proof-of-work for Junior DevOps / Cloud Engineer applications. Service code quality is secondary — pipeline, infra, and ops maturity is what's being sold.
 **Constraints locked in for this plan:** $115 AWS credit, project will NOT run continuously for a month, free-tier instance-type/quota limits apply. Every phase below is designed to be built, demoed, screenshotted, and torn down — not left running.
 
@@ -18,6 +18,8 @@
    - Stick to `t3.small`/`t3.medium` for nodes and `t3.micro`/`t3.small` for Jenkins/bastion. Avoid anything bigger unless a specific step (e.g. running the full observability stack) genuinely needs it.
    - **Use Spot for worker nodes** where the workload tolerates interruption (everything except maybe the observability node group) — meaningfully stretches the credit.
 4. **One Terraform apply = one billable session.** Get in the habit of: `terraform apply` → do the work for that phase → capture artifacts → `terraform destroy`. Keep a running note of `$ spent so far` after each session (even a rough estimate) so you don't get a surprise bill.
+5. **Private Cluster & Split Apply Workflow:** The EKS cluster has a strictly private API endpoint. A full `terraform apply` from your laptop will fail on the `alb-controller` Helm release. You MUST SSH into the bastion host, clone the repo, and run `terraform apply` from inside the VPC to finish provisioning. All future `apply` and `destroy` operations must also run from the bastion.
+6. **Naming Convention:** ALL resources must follow the `telos-*` naming prefix.
 
 ---
 
@@ -116,7 +118,7 @@
 Your current single repo becomes a multi-repo GitOps setup. Recommended split:
 
 ```
-three-tier-lab/                  (existing repo, becomes the "app monorepo")
+telos/                  (existing repo, becomes the "app monorepo")
 ├── services/
 │   ├── auth-service/
 │   ├── task-service/            ← current backend/ moves here almost unchanged
@@ -131,6 +133,7 @@ three-tier-lab/                  (existing repo, becomes the "app monorepo")
 │   │   ├── iam/
 │   │   ├── alb-controller/
 │   │   ├── bastion/
+│   │   ├── eks-access/
 │   │   └── sqs/
 │   ├── envs/
 │   │   └── dev/                 ← only one env needed for a portfolio project
@@ -147,7 +150,7 @@ three-tier-lab/                  (existing repo, becomes the "app monorepo")
 │   └── grafana-dashboards/
 └── README.md
 
-three-tier-lab-gitops/            (NEW, separate repo — ArgoCD watches this one)
+telos-gitops/            (NEW, separate repo — ArgoCD watches this one)
 ├── apps/
 │   ├── root-app.yaml             ← app-of-apps entrypoint
 │   ├── auth-service/
@@ -166,42 +169,50 @@ three-tier-lab-gitops/            (NEW, separate repo — ArgoCD watches this on
 
 Each phase lists: what you build, in what order, roughly how long a session should take, and what "done" looks like for your resume/portfolio. Phases are designed to be independently demoable — you can stop after any phase and already have something to show.
 
-### Phase 0 — Repo restructure (no AWS cost, do this locally)
+### Phase 0 — Repo restructure (no AWS cost, do this locally) [DONE]
 
 - Split `backend/` into `services/task-service/`, scaffold `services/auth-service/` and `services/notification-service/`
+- *Code Context:* `backend/` is a legacy Node.js/Express monolith. You will need to modify its existing POST/PUT task routes to publish SQS messages when splitting it into `task-service`.
 - Update Dockerfiles per service, get all three building and running locally via `docker-compose` (add a `docker-compose.yml` for local dev — this also gives you a fast local loop so you're not burning AWS credits just to test service wiring)
 - **Done when:** all three services + frontend run together locally via `docker-compose up`, task creation flows through to a visible "notification logged" output, using a local SQS-compatible stub (e.g. LocalStack) or just a temporary real SQS queue (SQS itself costs pennies even active — this is not the expensive part)
+- **Status Update:** Fully DONE. `backend/` has been completely migrated. `auth-service` (with Postgres DB) and `notification-service` (with Mongo DB) were scaffolded. `docker-compose.yml` is present and functional with LocalStack for SQS. Added beyond scope: Frontend was extended with an auth (register/login) flow, and a notifications panel polling `GET /api/notifications` every 15s.
 
-### Phase 1 — Terraform: codify what already exists
+### Phase 1 — Terraform: codify what already exists [COMPLETE]
 
 - Write Terraform for your **current, already-working** infra first: VPC, subnets, IGW/NAT, EKS cluster, the two node groups (with taints/labels), ECR repos, ACM cert reference, bastion, IAM roles/policies, security groups
 - No architecture changes yet — the goal is proving you can `destroy` and `apply` your _existing_ app identically
 - Remote state: create the S3 bucket + DynamoDB lock table manually once (`terraform/bootstrap/`, run outside normal apply/destroy cycle — this is the one thing that persists across sessions, and it costs essentially nothing idle)
-- **Done when:** `terraform apply` from empty account brings up the exact current 3-tier app end to end, `terraform destroy` tears it back down cleanly, and you can screenshot a full `apply` run for your portfolio
+- **Done when:** `terraform apply` from empty account brings up the exact current 3-tier app end to end, `terraform destroy` tears it back down cleanly, and you can screenshot a full `apply` run for your portfolio.
+- **Status:** Fully completed and validated. 49 resources are managed by Terraform. Nodes use SPOT instances (`t3.small`). Bastion auto-bootstraps dependencies. `alb-controller` is managed via Helm with IRSA.
+- **Constraints/Corrections:** The EKS API endpoint is private. Therefore, you must use a "split apply" approach: apply everything EXCEPT the Helm charts (like ALB controller) from your laptop, then SSH to the bastion to run the remaining apply. Furthermore, IAM changes or ECR updates MUST be run from the laptop, while EKS-API-dependent applies need the bastion. Gitignored `terraform.tfvars` and `secrets.yaml` must be manually recreated per session.
 
-### Phase 2 — Microservice cutover on real infra
+### Phase 2 — Microservice cutover on real infra [DONE]
 
 - Deploy the 3 services + frontend via plain manifests first (not ArgoCD yet — keep one variable changing at a time)
 - Add the SQS queue via Terraform (`modules/sqs/`), wire IAM policy for task-service (publish) and notification-service (consume) via IRSA
 - Update Ingress rules for new path-based routing (`/api/auth`, `/api/tasks`, frontend at `/`)
 - **Done when:** you can register a user, log in, create a task, and see the notification-service log/record the event — full request flow across 3 real services on EKS
+- **Status Update:** Fully DONE.
+  - SQS wired properly with IRSA.
+  - `ingress.yaml` updated for path-based routing.
+  - **Constraints/Corrections:** `ingress.yaml` was stripped down to HTTP-only, pending a fresh ACM certificate. `envsubst` must be used to dynamically inject `SQS_QUEUE_URL` and IRSA ARNs into the manifests before applying, since raw placeholders caused STS ValidationErrors. Task-service intentionally lacks JWT enforcement (known limitation). In-memory token storage used in frontend. PVs for databases are `hostPath` which do not persist across Spot node churn.
 
-### Phase 3 — Jenkins CI with security hardening
+### Phase 3 — Jenkins CI with security hardening [NOT STARTED]
 
 - Stand up Jenkins (either on a small EC2 instance in the same VPC, or as an in-cluster deployment via the Kubernetes plugin — EC2 is simpler to reason about for a first pass, in-cluster is more "cloud-native" if you want the extra credit)
 - Build the shared library with reusable stages: checkout → secret scan (gitleaks) → SAST (Semgrep) → dependency audit (npm audit) → unit tests → build image → image scan (Trivy, fail on HIGH/CRITICAL) → sign (cosign) → push to ECR → bump tag in GitOps repo
 - Per-service Jenkinsfile just calls the shared library with service-specific params
 - **Done when:** a commit to any service triggers its pipeline, a deliberately-introduced vulnerable dependency gets caught and fails the build (screenshot this — it's a great portfolio artifact), and a clean commit results in the GitOps repo being auto-updated
 
-### Phase 4 — ArgoCD GitOps cutover
+### Phase 4 — ArgoCD GitOps cutover [NOT STARTED]
 
-- Install ArgoCD in-cluster, point it at `three-tier-lab-gitops` repo
+- Install ArgoCD in-cluster, point it at `telos-gitops` repo
 - Set up app-of-apps: one root Application managing child Applications for each service + observability
 - Enable auto-sync + self-heal; demonstrate drift correction (manually `kubectl edit` a deployment, show ArgoCD reverting it — another great screenshot/demo moment)
 - Lock down ArgoCD UI access behind the bastion/port-forward, not a public LB
 - **Done when:** the only way changes reach the cluster is via a merge to the GitOps repo; manual kubectl is "break-glass only" and you can articulate why
 
-### Phase 5 — Observability
+### Phase 5 — Observability [NOT STARTED]
 
 - `kube-prometheus-stack` via Helm (Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics)
 - Loki + Promtail (or Grafana Alloy) for logs
@@ -210,7 +221,7 @@ Each phase lists: what you build, in what order, roughly how long a session shou
 - Alertmanager rule set: pod crash-looping, HPA maxed at ceiling, high 5xx rate, node disk pressure — route to a webhook or email
 - **Done when:** you can trigger a synthetic failure (kill a pod, spike load with a quick load-test script) and watch it show up in Grafana + fire an alert — record this as a short demo clip, it's extremely strong interview material
 
-### Phase 6 — Documentation & portfolio packaging
+### Phase 6 — Documentation & portfolio packaging [NOT STARTED]
 
 - Update root `README.md` with the full architecture diagram (regenerate from `plan.md` once built), a "what I'd do differently at scale" section, and a clear list of what's deliberately out of scope and why
 - Write a one-page "runbook": how to bring the whole stack up from zero and tear it down (this doubles as your own operational memory and as an artifact you can literally show in an interview)
