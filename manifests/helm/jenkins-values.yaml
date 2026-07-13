@@ -17,12 +17,11 @@ controller:
   JCasC:
     defaultConfig: true
 
-  # Pre-install plugins needed for Kubernetes and Git
   installPlugins:
-    - kubernetes:4260.v284411132204 # Kubernetes plugin
-    - workflow-aggregator:596.v8c21c963d92d
-    - git:5.2.2
-    - configuration-as-code:1810.v9b_c30a_249a_4c
+    - kubernetes
+    - workflow-aggregator
+    - git
+    - configuration-as-code
 
   serviceAccount:
     create: true
