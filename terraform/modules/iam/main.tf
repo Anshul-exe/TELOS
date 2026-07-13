@@ -357,3 +357,76 @@ resource "aws_iam_role_policy" "notification_service_sqs" {
   })
 }
 
+# ── jenkins IRSA (ECR Push) ───────────────────────────────────────────────
+
+data "aws_iam_policy_document" "jenkins_assume" {
+  count = local.create_oidc ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.this[0].arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = ["system:serviceaccount:${var.k8s_namespace}:${var.jenkins_sa_name}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "jenkins" {
+  count = local.create_oidc ? 1 : 0
+
+  name               = "${var.name_prefix}-jenkins-irsa"
+  assume_role_policy = data.aws_iam_policy_document.jenkins_assume[0].json
+
+  tags = merge(local.base_tags, { Name = "${var.name_prefix}-jenkins-irsa" })
+}
+
+resource "aws_iam_role_policy" "jenkins_ecr" {
+  count = local.create_oidc && length(var.jenkins_ecr_repo_arns) > 0 ? 1 : 0
+
+  name = "${var.name_prefix}-jenkins-ecr-push"
+  role = aws_iam_role.jenkins[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowECRAuth"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Sid      = "AllowECRPushPull"
+        Effect   = "Allow"
+        Action   = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:GetRepositoryPolicy",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:BatchGetImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage"
+        ]
+        Resource = var.jenkins_ecr_repo_arns
+      }
+    ]
+  })
+}

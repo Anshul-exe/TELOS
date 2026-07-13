@@ -66,6 +66,12 @@ module "iam" {
   # roles are only created when both OIDC is enabled and an ARN is supplied.
   task_service_sqs_queue_arn         = module.sqs.queue_arn
   notification_service_sqs_queue_arn = module.sqs.queue_arn
+
+  # Phase 3 — IRSA for Jenkins
+  jenkins_ecr_repo_arns = [
+    for name, repo_arn in module.ecr.repository_arns : repo_arn
+    if contains(["auth-service", "task-service", "notification-service", "frontend"], name)
+  ]
 }
 
 module "ecr" {

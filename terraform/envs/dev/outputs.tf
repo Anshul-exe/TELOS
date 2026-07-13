@@ -78,6 +78,11 @@ output "notification_service_irsa_role_arn" {
   value       = module.iam.notification_service_irsa_role_arn
 }
 
+output "jenkins_irsa_role_arn" {
+  description = "IRSA role ARN for Jenkins (annotate the K8s SA with eks.amazonaws.com/role-arn)."
+  value       = module.iam.jenkins_irsa_role_arn
+}
+
 # ALB Controller (IRSA) — annotate the aws-load-balancer-controller service
 # account with this ARN during the helm install on the bastion.
 output "alb_controller_role_arn" {

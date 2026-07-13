@@ -75,3 +75,15 @@ variable "notification_service_sqs_queue_arn" {
   type        = string
 }
 
+variable "jenkins_sa_name" {
+  description = "Kubernetes service account name for Jenkins."
+  type        = string
+  default     = "jenkins"
+}
+
+variable "jenkins_ecr_repo_arns" {
+  description = "List of ECR repository ARNs Jenkins is allowed to push to."
+  type        = list(string)
+  default     = []
+}
+

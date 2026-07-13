@@ -57,3 +57,8 @@ output "notification_service_irsa_role_arn" {
   depends_on  = [aws_iam_role_policy.notification_service_sqs]
 }
 
+output "jenkins_irsa_role_arn" {
+  description = "ARN of the IRSA role for Jenkins (ECR push). Null when OIDC is not configured."
+  value       = one(aws_iam_role.jenkins[*].arn)
+  depends_on  = [aws_iam_role_policy.jenkins_ecr]
+}
