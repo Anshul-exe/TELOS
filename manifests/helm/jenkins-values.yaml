@@ -1,0 +1,65 @@
+controller:
+  # Do not expose via ALB (Phase 3 spec). Access is strictly via kubectl port-forward.
+  serviceType: ClusterIP
+  
+  # Resource limits sized for t3.small nodes (2 vCPU, 2Gi RAM)
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+
+
+      
+  # Jenkins Configuration as Code (JCasC)
+  JCasC:
+    defaultConfig: true
+
+  # Pre-install plugins needed for Kubernetes and Git
+  installPlugins:
+    - kubernetes:4260.v284411132204 # Kubernetes plugin
+    - workflow-aggregator:596.v8c21c963d92d
+    - git:5.2.2
+    - configuration-as-code:1810.v9b_c30a_249a_4c
+
+  serviceAccount:
+    create: true
+    name: "jenkins"
+    annotations:
+      # Rendered dynamically by deploy wrapper or --set during helm install
+      eks.amazonaws.com/role-arn: "${JENKINS_IRSA_ROLE_ARN}"
+
+persistence:
+  enabled: true
+  storageClass: ""
+  size: "8Gi"
+  # TRADE-OFF DOCUMENTATION:
+  # Using hostPath persistence for JENKINS_HOME (via a static PV tied to this claim) 
+  # to remain consistent with the existing database non-persistence strategy. 
+  # This avoids provisioning EBS volumes, saving costs for this budget-gated project. 
+  # However, this means Jenkins data is tied to the specific node it is scheduled on, 
+  # and will be lost if the node is terminated.
+
+# Kubernetes plugin pod templates configuration
+agent:
+  enabled: true
+  podTemplates:
+    kaniko: |
+      - name: kaniko
+        label: kaniko
+        serviceAccount: jenkins
+        containers:
+          - name: kaniko
+            image: gcr.io/kaniko-project/executor:debug
+            command:
+              - /busybox/cat
+            tty: true
+            resources:
+              requests:
+                cpu: "200m"
+                memory: "256Mi"
+              limits:
+                cpu: "500m"
+                memory: "512Mi"
